@@ -26,7 +26,7 @@
     },
     "ROMM_BASE_PATH": {
       "name": "Base Path",
-      "description": "Base path for the ROMM application (make sure it's in the format \"/share/{directory}/\")"
+      "description": "Base path for the ROMM application (make sure it's in the format \"/share/{directory}/\" or \"/media/{directory}/\")"
     },
     "IGDB_CLIENT_ID": {
       "name": "IGDB Client ID",

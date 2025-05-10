@@ -88,13 +88,15 @@ fi
 
 # Get port with error handling
 
-if ! ROMM_PORT=$(bashio::addon.port 80); then
+if ! ROMM_PORT=$(bashio::addon.port 5555); then
     handle_error 1 "Failed to get port configuration"
 fi
-export ROMM_PORT
+export $ROMM_PORT
+bashio::log.info "Romm port set to $ROMM_PORT"
 
-LOGLEVEL=WARNING
+LOGLEVEL="WARNING"
 export LOGLEVEL
+bashio::log.info "Log Level: $LOGLEVEL"
 
 # Create romm user if it doesn't exist
 if ! id "romm" &>/dev/null; then
@@ -109,11 +111,22 @@ fi
 
 # Validate ROMM_BASE_PATH exists and is accessible
 bashio::log.info "Checking ROMM_BASE_PATH: $ROMM_BASE_PATH"
+
+# Check if ROMM_BASE_PATH starts with '/share/' or '/media/'
+if [[ "$ROMM_BASE_PATH" == /share/* || "$ROMM_BASE_PATH" == /media/* ]]; then
+    bashio::log.info "ROMM_BASE_PATH starts with an allowed prefix."
+else
+    bashio::log.warning "ROMM_BASE_PATH does not start with '/share/' or '/media/'. This might lead to accessibility issues depending on the environment."
+    handle_error 2 "ROMM_BASE_PATH must start with '/share/' or '/media/'. Current path: $ROMM_BASE_PATH"
+fi
+
 if [ ! -d "$ROMM_BASE_PATH" ]; then
     bashio::log.info "ROMM_BASE_PATH directory does not exist, creating it: $ROMM_BASE_PATH"
     if ! mkdir -p "$ROMM_BASE_PATH"; then
         handle_error 1 "Failed to create ROMM_BASE_PATH directory: $ROMM_BASE_PATH"
     fi
+else
+    bashio::log.info "ROMM_BASE_PATH directory already exists: $ROMM_BASE_PATH"
 fi
 
 bashio::log.info "Setting permissions on $ROMM_BASE_PATH"
