@@ -91,7 +91,7 @@ fi
 if ! ROMM_PORT=$(bashio::addon.port 5555); then
     handle_error 1 "Failed to get port configuration"
 fi
-export $ROMM_PORT
+export ROMM_PORT
 bashio::log.info "Romm port set to $ROMM_PORT"
 
 LOGLEVEL="WARNING"

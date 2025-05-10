@@ -53,7 +53,7 @@
   "slug": "romm",
   "host_network": true,
   "url": "https://github.com/rigerc/ha-addons/romm",
-  "version": "3.9-3",
+  "version": "3.9-4",
   "webui": "http://[HOST]:[PORT:5555]/",
   "image": "ghcr.io/rigerc/romm-{arch}"
 }
