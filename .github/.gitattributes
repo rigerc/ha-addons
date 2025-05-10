@@ -1,9 +1,6 @@
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-!.vscode/*.code-snippets
+# Set the default behavior, in case people don't have core.autocrlf set.
+* text eol=lf
 
-# Local History for Visual Studio Code
-.history/
+# Denote all files that are truly binary and should not be modified.
+*.png binary
+*.jpg binary
