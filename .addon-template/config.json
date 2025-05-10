@@ -1,0 +1,60 @@
+{
+  "arch": [
+    "aarch64"
+  ],
+  "description": "a beautiful, powerful, self-hosted rom manager.",
+  "init": false,
+  "hassio_api": true,
+  "map": [
+    "addon_config:rw",
+    "share:rw",
+    "media:rw",
+    "ssl"
+  ],
+  "name": "Romm",
+  "ports": {
+    "5555/tcp": 8080
+  },
+  "ports_description": {
+    "5555/tcp": "Web UI"
+  },
+  "options": {
+    "DB_HOST": "core-mariadb",
+    "DB_PORT": 3306,
+    "DB_USER": "romm",
+    "DB_PASSWD": "",
+    "DB_NAME": "romm",
+    "ROMM_AUTH_SECRET_KEY": "",
+    "ROMM_BASE_PATH": "",
+    "IGDB_CLIENT_ID": "",
+    "IGDB_CLIENT_SECRET": "",
+    "ENABLE_RESCAN_ON_FILESYSTEM_CHANGE": "false",
+    "SCREENSCRAPER_USER": "",
+    "SCREENSCRAPER_PASSWORD": "",
+    "MOBYGAMES_API_KEY": "",
+    "STEAMGRIDDB_API_KEY": ""
+  },
+  "schema": {
+    "DB_HOST": "str",
+    "DB_PORT": "int",
+    "DB_USER": "str", 
+    "DB_PASSWD": "password",
+    "DB_NAME": "str",
+    "ROMM_AUTH_SECRET_KEY": "str",
+    "ROMM_BASE_PATH": "match((?i)^\\/(share|media)\\/[^\\/]+(?:\\/[^\\/]+)*\\/$)",
+    "IGDB_CLIENT_ID": "str",
+    "IGDB_CLIENT_SECRET": "str",
+    "ENABLE_RESCAN_ON_FILESYSTEM_CHANGE": "bool?",
+    "SCREENSCRAPER_USER": "str?",
+    "SCREENSCRAPER_PASSWORD": "str?",
+    "MOBYGAMES_API_KEY": "str?",
+    "STEAMGRIDDB_API_KEY": "str?"
+  },
+  "slug": "romm",
+  "host_network": true,
+  "url": "https://github.com/rigerc/ha-addons/romm",
+  "version": "3.9-5",
+  "webui": "http://[HOST]:[PORT:5555]/",
+  "boot": "manual",
+  "image": "ghcr.io/rigerc/romm-{arch}"
+}

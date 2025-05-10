@@ -1,0 +1,8 @@
+{
+  "configuration": {
+    "DB_HOST": {
+      "name": "Database Host",
+      "description": "Hostname of the MariaDB database"
+    }
+  }
+}
