@@ -1,0 +1,127 @@
+#!/usr/bin/with-contenv bashio
+# shellcheck shell=bash
+set -e
+sleep 1
+# Error handling function
+handle_error() {
+    local exit_code=$1
+    local error_message=$2
+    bashio::log.error "$error_message"
+    exit "$exit_code"
+}
+
+# Function to validate and set environment variables
+set_config() {
+    local var_name=$1
+    local config_key=$2
+    local is_optional=${3:-false}  # Third parameter, defaults to false (required)
+    local value
+    
+    if ! value=$(bashio::config "$config_key"); then
+        if [ "$is_optional" = "true" ]; then
+            bashio::log.info "Optional configuration $config_key not found, skipping"
+            return 0
+        else
+            handle_error 1 "Failed to get configuration for $config_key"
+        fi
+    fi
+    
+    if [ -z "$value" ]; then
+        if [ "$is_optional" = "true" ]; then
+            bashio::log.info "Optional configuration $config_key is empty, skipping"
+            return 0
+        else
+            handle_error 1 "Configuration error: $config_key is not set"
+        fi
+    fi
+    
+    export "$var_name=$value"
+    bashio::log.info "Set $var_name: ${value:0:3}***" # Show only first 3 chars for security
+}
+
+# Start logging
+bashio::log.info "Starting ROMM configuration"
+
+# Set and validate all configuration values
+bashio::log.info "Loading configuration values..."
+set_config "DB_HOST" "DB_HOST"
+set_config "DB_PORT" "DB_PORT"
+set_config "DB_USER" "DB_USER"
+set_config "DB_PASSWD" "DB_PASSWD"
+set_config "DB_NAME" "DB_NAME"
+set_config "ROMM_AUTH_SECRET_KEY" "ROMM_AUTH_SECRET_KEY"
+set_config "ROMM_BASE_PATH" "ROMM_BASE_PATH"
+set_config "IGDB_CLIENT_ID" "IGDB_CLIENT_ID" true
+set_config "IGDB_CLIENT_SECRET" "IGDB_CLIENT_SECRET" true
+set_config "ENABLE_RESCAN_ON_FILESYSTEM_CHANGE" "ENABLE_RESCAN_ON_FILESYSTEM_CHANGE"
+set_config "SCREENSCRAPER_USER" "SCREENSCRAPER_USER" true
+set_config "SCREENSCRAPER_PASSWORD" "SCREENSCRAPER_PASSWORD" true
+set_config "MOBYGAMES_API_KEY" "MOBYGAMES_API_KEY" true
+set_config "STEAMGRIDDB_API_KEY" "STEAMGRIDDB_API_KEY" true
+
+# Validate Database Connection
+# This step requires 'mysqladmin' to be available in the system (e.g., from mariadb-client or mysql-client package).
+bashio::log.info "Validating database connection to $DB_HOST:$DB_PORT as $DB_USER..."
+
+# Temporarily export password for mysqladmin if DB_PASSWD is set
+# MYSQL_PWD is used by mysql command-line tools to avoid password prompts or warnings about using -p on the command line.
+if [ -n "$DB_PASSWD" ]; then
+    export MYSQL_PWD="$DB_PASSWD"
+fi
+
+# Attempt to ping the database server.
+# --connect-timeout=5 sets a 5-second timeout for the connection attempt.
+if mysqladmin ping -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" --silent --connect-timeout=5; then
+    bashio::log.info "Database connection successful."
+else
+    # Unset MYSQL_PWD before exiting on error
+    if [ -n "$DB_PASSWD" ]; then
+        unset MYSQL_PWD
+    fi
+    handle_error 2 "Database connection failed. Please check DB_HOST, DB_PORT, DB_USER, DB_PASSWD. Ensure MariaDB is running, accessible, and credentials are correct."
+fi
+
+# Unset MYSQL_PWD after use
+if [ -n "$DB_PASSWD" ]; then
+    unset MYSQL_PWD
+fi
+
+# Get port with error handling
+
+if ! ROMM_PORT=$(bashio::addon.port 80); then
+    handle_error 1 "Failed to get port configuration"
+fi
+export ROMM_PORT
+
+LOGLEVEL=WARNING
+export LOGLEVEL
+
+# Create romm user if it doesn't exist
+if ! id "romm" &>/dev/null; then
+    bashio::log.info "Creating romm user..."
+    if ! addgroup -g 1000 -S romm || ! adduser -u 1000 -D -S -G romm romm; then
+        handle_error 1 "Failed to create romm user"
+    fi
+    bashio::log.info "romm user created successfully"
+else
+    bashio::log.info "romm user already exists"
+fi
+
+# Validate ROMM_BASE_PATH exists and is accessible
+bashio::log.info "Checking ROMM_BASE_PATH: $ROMM_BASE_PATH"
+if [ ! -d "$ROMM_BASE_PATH" ]; then
+    bashio::log.info "ROMM_BASE_PATH directory does not exist, creating it: $ROMM_BASE_PATH"
+    if ! mkdir -p "$ROMM_BASE_PATH"; then
+        handle_error 1 "Failed to create ROMM_BASE_PATH directory: $ROMM_BASE_PATH"
+    fi
+fi
+
+bashio::log.info "Setting permissions on $ROMM_BASE_PATH"
+chown -R romm:romm "$ROMM_BASE_PATH" || bashio::log.warning "Failed to change ownership of $ROMM_BASE_PATH to romm:romm"
+chmod -R a+rw "$ROMM_BASE_PATH" || bashio::log.warning "Failed to set permissions on $ROMM_BASE_PATH"
+
+bashio::log.info "Disabling nginx logging"
+sed -i.bak "s/^\(\s*access_log\s\+\).*$/\1off;/" "/etc/nginx/nginx.conf"
+
+bashio::log.info "Starting ROMM application on port $ROMM_PORT"
+exec /scripts/entrypoint.sh /scripts/init

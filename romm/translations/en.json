@@ -1,0 +1,60 @@
+{
+  "configuration": {
+    "DB_HOST": {
+      "name": "Database Host",
+      "description": "Hostname of the MariaDB database"
+    },
+    "DB_PORT": {
+      "name": "Database Port",
+      "description": "Port number of the MariaDB database"
+    },
+    "DB_USER": {
+      "name": "Database User",
+      "description": "Username for the MariaDB database"
+    },
+    "DB_PASSWD": {
+      "name": "Database Password",
+      "description": "Password for the MariaDB database"
+    },
+    "DB_NAME": {
+      "name": "Database Name",
+      "description": "Name of the MariaDB database"
+    },
+    "ROMM_AUTH_SECRET_KEY": {
+      "name": "Romm Authentication Secret Key",
+      "description": "Secret key used for authentication (use a unique key, preferably generated via openssl rand -hex 32)"
+    },
+    "ROMM_BASE_PATH": {
+      "name": "Base Path",
+      "description": "Base path for the ROMM application (make sure it's in the format \"/share/{directory}/\")"
+    },
+    "IGDB_CLIENT_ID": {
+      "name": "IGDB Client ID",
+      "description": "Client ID for IGDB API access"
+    },
+    "IGDB_CLIENT_SECRET": {
+      "name": "IGDB Client Secret",
+      "description": "Client secret for IGDB API access"
+    },
+    "ENABLE_RESCAN_ON_FILESYSTEM_CHANGE": {
+      "name": "Enable Rescan on Filesystem Change",
+      "description": "Automatically rescan when filesystem changes are detected"
+    },
+    "SCREENSCRAPER_USER": {
+      "name": "ScreenScraper Username",
+      "description": "Username for ScreenScraper API access"
+    },
+    "SCREENSCRAPER_PASSWORD": {
+      "name": "ScreenScraper Password",
+      "description": "Password for ScreenScraper API access"
+    },
+    "MOBYGAMES_API_KEY": {
+      "name": "MobyGames API Key",
+      "description": "API key for MobyGames access"
+    },
+    "STEAMGRIDDB_API_KEY": {
+      "name": "SteamGridDB API Key",
+      "description": "API key for SteamGridDB access"
+    }
+  }
+}
