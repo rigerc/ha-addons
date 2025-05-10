@@ -6,3 +6,4 @@
 !.vscode/*.code-snippets
 # Local History for Visual Studio Code
 .history/
+./addon-template
