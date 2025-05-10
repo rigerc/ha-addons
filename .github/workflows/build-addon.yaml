@@ -1,4 +1,3 @@
-
 ---
 name: Builder
 
@@ -47,7 +46,7 @@ jobs:
 
   build:
     if: ${{ needs.check-addon-changes.outputs.changedAddons != '[]' }}
-    needs: [check-addon-changes]
+    needs: [check-addon-changes, lint_config]
     runs-on: ubuntu-latest
     name: Build ${{ matrix.arch }} ${{ matrix.addon }} add-on
     strategy:
