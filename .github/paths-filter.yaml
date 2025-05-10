@@ -1,0 +1,3 @@
+  # AUTO BUILDS #
+# From https://github.com/Poeschl/Hassio-Addons
+romm: romm/config.* # Image : yes

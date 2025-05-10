@@ -1,19 +1,54 @@
-# yamllint disable rule:line-length
-# inspired from https://github.com/Poeschl/Hassio-Addons
+
 ---
 name: Builder
 
-env:
-  BUILD_ARGS: ""
-
 on:
-  workflow_call:
+  workflow_dispatch:
+    inputs:
+      addon:
+        description: 'Add-on to build (leave empty to detect changes)'
+        required: false
+        type: string
 
 jobs:
+  check-addon-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      changedAddons: ${{ steps.set-addons.outputs.addons }}
+    steps:
+      - name: ↩️ Checkout
+        uses: actions/checkout@v4
+      - name: Set add-ons to build
+        id: set-addons
+        run: |
+          if [ -n "${{ github.event.inputs.addon }}" ]; then
+            # Use manually specified add-on
+            echo "addons=[\"${{ github.event.inputs.addon }}\"]" >> $GITHUB_OUTPUT
+          else
+            # Detect changed files
+            changed_dirs=$(find . -maxdepth 1 -type d -not -path "*/\.*" -not -path "." | sed 's|^\./||' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            echo "addons=$changed_dirs" >> $GITHUB_OUTPUT
+          fi
+
+  lint_config:
+    if: ${{ needs.check-addon-changes.outputs.changedAddons != '[]' }}
+    needs: check-addon-changes
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        addon: ${{ fromJSON(needs.check-addon-changes.outputs.changedAddons) }}
+    steps:
+      - name: ↩️ Checkout
+        uses: actions/checkout@v4
+      - name: 🔎 Run Home Assistant Add-on Lint
+        uses: frenck/action-addon-linter@v2
+        with:
+          path: "./${{ matrix.addon }}"
+
   build:
     if: ${{ needs.check-addon-changes.outputs.changedAddons != '[]' }}
+    needs: [check-addon-changes]
     runs-on: ubuntu-latest
-    environment: CR_PAT
     name: Build ${{ matrix.arch }} ${{ matrix.addon }} add-on
     strategy:
       matrix:
@@ -24,27 +59,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Resolve Symlinks
-        run: |
-          # Find all symlinks and replace them with the real files or directories
-          find . -type l | while read -r link; do
-            target="$(readlink -f "$link")"
-            if [ -z "$target" ]; then
-              echo "Skipping broken symlink: $link"
-              continue
-            fi
-          
-            rm "$link"
-            
-            # If target is directory, copy contents into link's parent directory
-            if [ -d "$target" ]; then
-              mkdir -p "$link"
-              cp -a "$target/." "$link/"
-            else
-              cp "$target" "$link"
-            fi
-          done
-
       - name: Get information
         id: info
         uses: home-assistant/actions/helpers/info@master
@@ -53,30 +67,17 @@ jobs:
 
       - name: Check if add-on should be built
         id: check
-        env:
-          HEAD: "${{ github.head_ref }}"
         run: |
-          # shellcheck disable=SC2157,SC2086 
           if [[ "${{ steps.info.outputs.architectures }}" =~ ${{ matrix.arch }} ]]; then
-             # shellcheck disable=SC2129
-             echo "build_arch=true" >> $GITHUB_OUTPUT;
-             # shellcheck disable=SC2129
-             echo "image=$(echo ${{ steps.info.outputs.image }} | cut -d'/' -f3)" >> $GITHUB_OUTPUT;
-             if [[ -z "$HEAD" ]] && [[ "${{ github.event_name }}" == "push" ]]; then
-                 # shellcheck disable=SC2129
-                 echo "BUILD_ARGS=" >> $GITHUB_ENV;
-             fi
-           else
-             echo "${{ matrix.arch }} is not a valid arch for ${{ matrix.addon }}, skipping build";
-             # shellcheck disable=SC2129
-             echo "build_arch=false" >> $GITHUB_OUTPUT;
+             echo "build_arch=true" >> $GITHUB_OUTPUT
+             echo "image=$(echo ${{ steps.info.outputs.image }} | cut -d'/' -f3)" >> $GITHUB_OUTPUT
+          else
+             echo "${{ matrix.arch }} is not a valid arch for ${{ matrix.addon }}, skipping build"
+             echo "build_arch=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Use action to check for mixed line endings (CRLF and LF)
-        uses: ymwymw/check-mixed-line-endings@v2
-
       - name: Login to GitHub Container Registry
-        if: env.BUILD_ARGS != '--test'
+        if: steps.check.outputs.build_arch == 'true'
         uses: docker/login-action@v3.1.0
         with:
           registry: ghcr.io
@@ -84,12 +85,10 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build ${{ matrix.addon }} add-on
-        id: builderstep
         if: steps.check.outputs.build_arch == 'true'
         uses: home-assistant/builder@2025.03.0
         with:
           args: |
-            ${{ env.BUILD_ARGS }} \
             --${{ matrix.arch }} \
             --target /data/${{ matrix.addon }} \
             --image "${{ steps.check.outputs.image }}" \
