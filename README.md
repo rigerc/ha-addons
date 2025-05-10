@@ -4,7 +4,7 @@ Welcome to rigerc's collection of Home Assistant Addons! 🌟
 
 ## ℹ️ About This Repository
 
-This repository contains a collection of Home Assistant addons developed by **rigerc**. Our goal is to [mention your goal, e.g., "provide innovative tools for the Home Assistant community," or "simplify complex home automation tasks"].
+This repository contains a collection of Home Assistant addons developed by **rigerc**.
 
 **⚠️ Important Notes:**
 * These addons are designed for Home Assistant.
@@ -37,6 +37,7 @@ Or click this:
 Below is a list of addons available in this repository. Click on an addon name for more detailed information, including its specific configuration and usage instructions.
 
 ### [Romm](./romm)
+**aarch64 only for now!**
 
 ![Supports aarch64 Architecture][aarch64-shield]
 
