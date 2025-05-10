@@ -8,7 +8,11 @@ on:
         description: 'Add-on to build (leave empty to detect changes)'
         required: false
         type: string
-
+  push:
+    branches:
+      - main # Or your default branch, e.g., master
+    paths:
+      - '**/config.json'
 jobs:
   check-addon-changes:
     runs-on: ubuntu-latest
