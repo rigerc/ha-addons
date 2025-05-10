@@ -37,7 +37,7 @@ done
 # Nginx uses `envsubst` to load environment variables into configuration files, but it does not
 # support the default value syntax `${VAR:-default}`.
 export ROMM_BASE_PATH=${ROMM_BASE_PATH:-/romm}
-export ROMM_PORT=${ROMM_PORT:-8080}
+export ROMM_PORT=${ROMM_PORT:-5555}
 
 # Replace environment variables used in nginx configuration templates.
 echo "Executing: /docker-entrypoint.d/20-envsubst-on-templates.sh"

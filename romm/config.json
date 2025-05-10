@@ -13,10 +13,10 @@
   ],
   "name": "Romm",
   "ports": {
-    "80/tcp": 8080
+    "5555/tcp": 8080
   },
   "ports_description": {
-    "80/tcp": "Web UI"
+    "5555/tcp": "Web UI"
   },
   "options": {
     "DB_HOST": "core-mariadb",
