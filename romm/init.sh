@@ -3,19 +3,27 @@
 set -e
 
 # --- Configuration Variables ---
+echo "[INFO] Initializing ROMM Addon setup script..."
 BASHIO_VERSION="v0.17.0"
 S6_OVERLAY_VERSION="3.2.0.2"
 TEMPIO_VERSION="2024.11.2" # Note: The original script had 2024.11.2, which might be a future date.
 
+echo "[INFO] Configuration Variables:"
+echo "[INFO]   BASHIO_VERSION=${BASHIO_VERSION}"
+echo "[INFO]   S6_OVERLAY_VERSION=${S6_OVERLAY_VERSION}"
+echo "[INFO]   TEMPIO_VERSION=${TEMPIO_VERSION}"
+echo ""
+
 # --- Error Handling for Build Architecture ---
 # Check if the build architecture argument is provided
 if [ -z "$1" ]; then
-  echo "Error: Build architecture not provided."
-  echo "Usage: $0 <build_arch>"
-  echo "Example: $0 amd64"
+  echo "[ERROR] Build architecture not provided."
+  echo "[ERROR] Usage: $0 <build_arch>"
+  echo "[ERROR] Example: $0 amd64"
   exit 1
 fi
 BUILD_ARCH="$1"
+echo "[INFO] Build architecture received: ${BUILD_ARCH}"
 
 # --- Package Installation ---
 # Update package lists and install essential packages
@@ -33,7 +41,7 @@ elif command -v apk >/dev/null 2>&1; then
     apk add --no-cache bash curl >/dev/null
     # Install build dependencies (tar, xz) and runtime dependencies
     echo "Installing build and runtime dependencies (tar, xz, libcrypto, libssl, musl, jq, tzdata)..."
-    apk add --no-cache --virtual .build-dependencies tar xz >/dev/null
+    apk add --no-cache --virtual .build-deps tar xz >/dev/null # Renamed virtual package for clarity
     apk add --no-cache libcrypto3 libssl3 musl-utils musl jq tzdata mariadb-client >/dev/null
 else
     echo "Error: Neither apt-get nor apk found. Cannot install packages."
@@ -161,8 +169,8 @@ echo "Cleaning up build dependencies and temporary files..."
 
 if command -v apk >/dev/null 2>&1; then
     echo "Alpine-based system detected. Cleaning up with apk..."
-    if apk del --no-cache --purge .build-dependencies; then # .build-dependencies was defined during apk add
-        echo "Build dependencies removed successfully."
+    if apk del --no-cache --purge .build-deps; then # .build-deps was defined during apk add
+        echo "Build dependencies (.build-deps) removed successfully."
     else
         echo "Warning: Failed to remove build dependencies with apk."
     fi
