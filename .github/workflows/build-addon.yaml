@@ -1,4 +1,3 @@
----
 name: Builder
 
 on:
@@ -8,6 +7,14 @@ on:
         description: 'Add-on to build (leave empty to detect changes)'
         required: false
         type: string
+      mode:
+        description: 'Run mode (build or test)'
+        required: false
+        default: 'build'
+        type: choice
+        options:
+          - build
+          - test
   push:
     branches:
       - main # Or your default branch, e.g., master
@@ -33,6 +40,56 @@ jobs:
             echo "addons=$changed_dirs" >> $GITHUB_OUTPUT
           fi
 
+  check-version-changes:
+    if: ${{ needs.check-addon-changes.outputs.changedAddons != '[]' }}
+    needs: check-addon-changes
+    runs-on: ubuntu-latest
+    outputs:
+      version_changed: ${{ steps.check-version.outputs.version_changed }}
+      addons_with_version_change: ${{ steps.check-version.outputs.addons_with_version_change }}
+    steps:
+      - name: ↩️ Checkout with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed to check previous versions
+      
+      - name: Check for version changes
+        id: check-version
+        run: |
+          # Initialize arrays
+          version_changed=false
+          addons_with_version_change="[]"
+          changed_addons_array=()
+          
+          # Parse the JSON array of changed addons
+          readarray -t changed_addons_array < <(echo '${{ needs.check-addon-changes.outputs.changedAddons }}' | jq -r '.[]')
+          
+          # Initialize an array to collect addons with version changes
+          declare -a version_changed_addons=()
+          
+          for addon in "${changed_addons_array[@]}"; do
+            if [ -f "$addon/config.json" ]; then
+              # Get current version
+              current_version=$(jq -r '.version' "$addon/config.json")
+              
+              # Get the previous version from git history
+              prev_version=$(git log -1 --skip=1 --pretty=format:%H -- "$addon/config.json" | xargs -I{} git show {}:"$addon/config.json" 2>/dev/null | jq -r '.version' 2>/dev/null)
+              
+              echo "Addon: $addon, Current version: $current_version, Previous version: $prev_version"
+              
+              # Check if version changed or if this is a new addon
+              if [ -z "$prev_version" ] || [ "$current_version" != "$prev_version" ]; then
+                echo "Version changed for $addon"
+                version_changed=true
+                version_changed_addons+=("$addon")
+              fi
+            fi
+          done
+          
+          # Set outputs
+          echo "version_changed=$version_changed" >> $GITHUB_OUTPUT
+          echo "addons_with_version_change=$(printf '%s\n' "${version_changed_addons[@]}" | jq -R . | jq -s .)" >> $GITHUB_OUTPUT
+
   lint_config:
     if: ${{ needs.check-addon-changes.outputs.changedAddons != '[]' }}
     needs: check-addon-changes
@@ -48,8 +105,101 @@ jobs:
         with:
           path: "./${{ matrix.addon }}"
 
+  generate-changelog:
+    if: ${{ needs.check-version-changes.outputs.version_changed == 'true' }}
+    needs: [check-addon-changes, check-version-changes]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        addon: ${{ fromJSON(needs.check-version-changes.outputs.addons_with_version_change) }}
+    steps:
+      - name: ↩️ Checkout with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for changelog
+      
+      - name: Get addon version
+        id: addon-version
+        run: |
+          version=$(jq -r '.version' "${{ matrix.addon }}/config.json")
+          echo "version=$version" >> $GITHUB_OUTPUT
+      
+      - name: Find previous version tag
+        id: find-previous-tag
+        run: |
+          # Try to find the most recent tag for this addon
+          previous_tag=$(git tag -l "${{ matrix.addon }}-v*" | sort -V | tail -n 1)
+          
+          if [ -z "$previous_tag" ]; then
+            echo "No previous tag found, using first commit"
+            echo "previous_tag=$(git rev-list --max-parents=0 HEAD)" >> $GITHUB_OUTPUT
+          else
+            echo "Previous tag: $previous_tag"
+            echo "previous_tag=$previous_tag" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Generate changelog
+        uses: github-changelog-generator/github-changelog-generator-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          output: ${{ matrix.addon }}/CHANGELOG.md
+          headerLabel: "# Changelog"
+          breakingLabel: "### 🚨 Breaking Changes"
+          enhancementLabel: "### 🚀 Enhancements"
+          bugsLabel: "### 🐛 Bug Fixes"
+          deprecatedLabel: "### ⚠️ Deprecated"
+          removedLabel: "### 🔥 Removed"
+          securityLabel: "### 🔒 Security"
+          issuesLabel: "### 📋 Other Issues"
+          prLabel: "### 📦 Other Pull Requests"
+          addSections: '{"documentation":{"prefix":"### 📚 Documentation","labels":["documentation"]},"maintenance":{"prefix":"### 🔧 Maintenance","labels":["maintenance"]}}'
+          sinceTag: ${{ steps.find-previous-tag.outputs.previous_tag }}
+          futureRelease: "${{ matrix.addon }}-v${{ steps.addon-version.outputs.version }}"
+          stripGeneratorNotice: true
+          compareLink: true
+          verbose: true
+          filterByMilestone: false
+          author: true
+          usernamesAsGithubLogins: true
+          unreleased: false
+          stripHeaders: false
+          includeLabels: ""
+          excludeLabels: ""
+          issueLineLabels: ""
+          excludeTags: ""
+          excludeTagsRegex: ""
+          pullRequests: true
+          prWoLabels: true
+          issues: true
+          issuesWoLabels: true
+          maxIssues: 0
+          simpleList: false
+          showMetadata: false
+      
+      - name: Commit and push changelog
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # Check if there are changes to commit
+          if git diff --quiet ${{ matrix.addon }}/CHANGELOG.md; then
+            echo "No changes to CHANGELOG.md, skipping commit"
+          else
+            git add ${{ matrix.addon }}/CHANGELOG.md
+            git commit -m "Update CHANGELOG.md for ${{ matrix.addon }} v${{ steps.addon-version.outputs.version }}"
+            git push
+          fi
+      
+      - name: Create version tag
+        run: |
+          # Create and push a new tag for this version
+          new_tag="${{ matrix.addon }}-v${{ steps.addon-version.outputs.version }}"
+          git tag -a "$new_tag" -m "Release ${{ matrix.addon }} v${{ steps.addon-version.outputs.version }}"
+          git push origin "$new_tag"
+
   build:
-    if: ${{ needs.check-addon-changes.outputs.changedAddons != '[]' }}
+    # Only run build if not in test mode and there are changed add-ons
+    if: ${{ needs.check-addon-changes.outputs.changedAddons != '[]' && github.event.inputs.mode != 'test' }}
     needs: [check-addon-changes, lint_config]
     runs-on: ubuntu-latest
     name: Build ${{ matrix.arch }} ${{ matrix.addon }} add-on
@@ -57,7 +207,8 @@ jobs:
       matrix:
         addon: ${{ fromJSON(needs.check-addon-changes.outputs.changedAddons) }}
         arch: ["aarch64", "amd64", "armv7"]
-
+    outputs:
+      build_statuses: ${{ steps.collect-statuses.outputs.build_statuses }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -88,7 +239,9 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build ${{ matrix.addon }} add-on
+        id: build
         if: steps.check.outputs.build_arch == 'true'
+        continue-on-error: true
         uses: home-assistant/builder@2025.03.0
         with:
           args: |
@@ -98,8 +251,61 @@ jobs:
             --docker-hub "ghcr.io/${{ github.repository_owner }}" \
             --addon
 
-  notify:
+      - name: Set build status
+        id: set-status
+        run: |
+          if [ "${{ steps.check.outputs.build_arch }}" == "false" ]; then
+            echo "status=skipped" >> $GITHUB_OUTPUT
+          elif [ "${{ steps.build.outcome }}" == "success" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "status=failed" >> $GITHUB_OUTPUT
+          fi
+          
+          # Create a unique key for this build
+          echo "key=${{ matrix.addon }}_${{ matrix.arch }}" >> $GITHUB_OUTPUT
+
+      # This is a workaround to collect all statuses from matrix jobs
+      # We'll create a file for each build with its status
+      - name: Save build status
+        run: |
+          mkdir -p /tmp/build_statuses
+          echo "${{ steps.set-status.outputs.status }}" > /tmp/build_statuses/${{ steps.set-status.outputs.key }}
+
+      # Upload the status files as an artifact
+      - name: Upload build status
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-statuses
+          path: /tmp/build_statuses/
+          retention-days: 1
+
+  # New job to collect all build statuses
+  collect-build-statuses:
     needs: [build]
+    if: always() && needs.build.result != 'skipped'
+    runs-on: ubuntu-latest
+    outputs:
+      build_statuses: ${{ steps.collect.outputs.build_statuses }}
+    steps:
+      - name: Download build statuses
+        uses: actions/download-artifact@v3
+        with:
+          name: build-statuses
+          path: /tmp/build_statuses
+
+      - name: Collect build statuses
+        id: collect
+        run: |
+          # Create a JSON object with all build statuses
+          echo "build_statuses=$(find /tmp/build_statuses -type f | while read file; do
+            key=$(basename "$file")
+            status=$(cat "$file")
+            echo "\"$key\":\"$status\""
+          done | paste -sd, - | awk '{print "{"$0"}"}')" >> $GITHUB_OUTPUT
+
+  notify:
+    needs: [lint_config, build, collect-build-statuses, check-version-changes, generate-changelog]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -112,17 +318,31 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_WORKFLOW: ${{ github.workflow }}
           GITHUB_RUN_ID: ${{ github.run_id }}
+          TEST_MODE: ${{ github.event.inputs.mode == 'test' }}
+          BUILD_STATUSES: ${{ needs.collect-build-statuses.outputs.build_statuses }}
+          VERSION_CHANGED: ${{ needs.check-version-changes.outputs.version_changed }}
         run: |
-          # If build was skipped, use the overall workflow status
-          if [ -z "$WORKFLOW_STATUS" ] || [ "$WORKFLOW_STATUS" == "skipped" ]; then
-            WORKFLOW_STATUS="${{ job.status }}"
+          # If in test mode or build was skipped, use the lint job status
+          if [ "$TEST_MODE" == "true" ] || [ -z "$WORKFLOW_STATUS" ] || [ "$WORKFLOW_STATUS" == "skipped" ]; then
+            WORKFLOW_STATUS="${{ needs.lint_config.result }}"
+            if [ -z "$WORKFLOW_STATUS" ]; then
+              WORKFLOW_STATUS="${{ job.status }}"
+            fi
           fi
           
-          # Set title and message based on status
-          if [ "$WORKFLOW_STATUS" == "success" ]; then
-            TITLE="✅ Build Successful"
+          # Set title and message based on status and mode
+          if [ "$TEST_MODE" == "true" ]; then
+            if [ "$WORKFLOW_STATUS" == "success" ]; then
+              TITLE="✅ Test Successful"
+            else
+              TITLE="❌ Test Failed"
+            fi
           else
-            TITLE="❌ Build Failed"
+            if [ "$WORKFLOW_STATUS" == "success" ]; then
+              TITLE="✅ Build Successful"
+            else
+              TITLE="❌ Build Failed"
+            fi
           fi
           
           # Create the message with details
@@ -130,7 +350,24 @@ jobs:
           Workflow: $GITHUB_WORKFLOW
           Triggered by: $GITHUB_ACTOR
           Status: $WORKFLOW_STATUS
+          Mode: $([ "$TEST_MODE" == "true" ] && echo "Test" || echo "Build")"
+          
+          # Add version change info if applicable
+          if [ "$VERSION_CHANGED" == "true" ]; then
+            MESSAGE="$MESSAGE
+          Version: Updated (CHANGELOG.md generated)"
+          fi
+          
+          MESSAGE="$MESSAGE
           Run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          
+          # Add architecture build statuses if not in test mode
+          if [ "$TEST_MODE" != "true" ] && [ -n "$BUILD_STATUSES" ]; then
+            MESSAGE="$MESSAGE
+          
+          Architecture Build Status:
+          $(echo $BUILD_STATUSES | jq -r 'to_entries | .[] | "\(.key): \(.value | ascii_upcase)"' | sed 's/_/ for /g')"
+          fi
           
           # Set priority based on status (1=min, 5=max)
           if [ "$WORKFLOW_STATUS" == "success" ]; then
