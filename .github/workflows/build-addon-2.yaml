@@ -35,7 +35,7 @@ jobs:
         id: information
         uses: frenck/action-addon-information@v1.4.2
         with:
-          path: "/${{ inputs.slug }}"
+          path: "./${{ inputs.slug }}"
       - name: 🚀 Process possible slug override
         id: override
         run: |
@@ -73,7 +73,7 @@ jobs:
       - name: 🚀 Run Hadolint
         uses: brpaz/hadolint-action@v1.5.0
         with:
-          dockerfile: "/Dockerfile"
+          dockerfile: "./Dockerfile"
 
   lint-json:
     name: JSON Lint
