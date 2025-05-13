@@ -5,140 +5,95 @@ on:
   workflow_dispatch:
     inputs:
       addon:
-        description: 'Add-on to build (e.g., "my_addon_dir_name"). Leave empty to detect changes on push.'
+        description: 'Add-on to build (leave empty to detect changes)'
         required: false
         type: string
   push:
     branches:
-      - main # Or your default branch
+      - main # Or your default branch, e.g., master
     paths:
       - '**/config.json'
-
-# Ensures that only one workflow run for the same group (branch or PR) runs at a time.
-# If a new commit is pushed, the currently running workflow for that group will be cancelled.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read # To checkout the repository and read files
-  packages: write # To push Docker images to GHCR
-
 jobs:
-  determine_changes:
-    name: Determine Changed Add-ons
+  check-addon-changes:
     runs-on: ubuntu-latest
     outputs:
-      changed_addons: ${{ steps.set_addons.outputs.addons_json }} # Ensure this matches the step output name
-      has_changes: ${{ steps.set_addons.outputs.addons_json != '[]' }}
+      changedAddons: ${{ steps.set-addons.outputs.addons }}
     steps:
-      - name: ↩️ Checkout repository
+      - name: ↩️ Checkout
         uses: actions/checkout@v4
-        with:
-          # Fetch all history for all branches and tags.
-          # Required for git diff on push events if github.event.before is not an immediate parent.
-          fetch-depth: 0
-
       - name: Set add-ons to build
-        id: set_addons
+        id: set-addons
         run: |
-          ADDONS_JSON="[]" # Default to empty JSON array
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ -n "${{ github.event.inputs.addon }}" ]; then
-            echo "Manual trigger: Building specified add-on: ${{ github.event.inputs.addon }}"
-            ADDONS_JSON="[\"${{ github.event.inputs.addon }}\"]"
-          elif [ "${{ github.event_name }}" == "push" ]; then
-            echo "Push trigger: Detecting changed add-ons..."
-            # Get directories of config.json files changed in the push
-            # github.event.before is the SHA before the push
-            # github.event.after is the SHA after the push (same as github.sha for push)
-            # The '|| true' handles the case where github.event.before is 000... (new branch)
-            # or if no .json files were changed (though paths filter should catch this).
-            changed_config_files=$(git diff --name-only "${{ github.event.before }}" "${{ github.event.after }}" -- '**/config.json' || true)
-
-            if [ -n "$changed_config_files" ]; then
-              # Extract directory names, ensure uniqueness, and format as JSON array
-              # Assumes addon structure is 'addon_name/config.json'
-              ADDONS_JSON=$(echo "$changed_config_files" | sed 's|/config\.json$||' | sed 's|^\./||' | sort -u | jq --raw-input --slurp --compact-output 'split("\n") | map(select(length > 0))')
-              echo "Detected changed add-ons: $ADDONS_JSON"
-            else
-              echo "No config.json files changed in this push."
-            fi
+          if [ -n "${{ github.event.inputs.addon }}" ]; then
+            # Use manually specified add-on
+            echo "addons=[\"${{ github.event.inputs.addon }}\"]" >> $GITHUB_OUTPUT
           else
-            echo "No specific add-on provided and not a push event with config.json changes. Nothing to build."
+            # Detect changed files
+            changed_dirs=$(find . -maxdepth 1 -type d -not -path "*/\.*" -not -path "." | sed 's|^\./||' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            echo "addons=$changed_dirs" >> $GITHUB_OUTPUT
           fi
-          echo "addons_json=$ADDONS_JSON" >> "$GITHUB_OUTPUT"
-        shell: bash
 
-  lint_addons:
-    name: Lint Add-on Configs
+  lint_config:
+    if: ${{ needs.check-addon-changes.outputs.changedAddons != '[]' }}
+    needs: check-addon-changes
     runs-on: ubuntu-latest
-    needs: determine_changes
-    if: ${{ needs.determine_changes.outputs.has_changes == 'true' }}
     strategy:
       matrix:
-        addon: ${{ fromJson(needs.determine_changes.outputs.changed_addons) }}
-      fail-fast: false # Continue linting other addons even if one fails
+        addon: ${{ fromJSON(needs.check-addon-changes.outputs.changedAddons) }}
     steps:
-      - name: ↩️ Checkout repository
+      - name: ↩️ Checkout
         uses: actions/checkout@v4
-
-      - name: 🔎 Run Home Assistant Add-on Lint for ${{ matrix.addon }}
-        uses: frenck/action-addon-linter@v2 # Pin to major version
+      - name: 🔎 Run Home Assistant Add-on Lint
+        uses: frenck/action-addon-linter@v2.18
         with:
           path: "./${{ matrix.addon }}"
 
-  build_addons:
-    name: Build ${{ matrix.arch }} / ${{ matrix.addon }}
+  build:
+    if: ${{ needs.check-addon-changes.outputs.changedAddons != '[]' }}
+    needs: [check-addon-changes, lint_config]
     runs-on: ubuntu-latest
-    needs: [determine_changes, lint_addons]
-    # Run if there are changes AND linting passed (or was skipped because no changes)
-    if: ${{ needs.determine_changes.outputs.has_changes == 'true' && needs.lint_addons.result != 'failure' && needs.lint_addons.result != 'cancelled' }}
+    name: Build ${{ matrix.arch }} ${{ matrix.addon }} add-on
     strategy:
       matrix:
-        addon: ${{ fromJson(needs.determine_changes.outputs.changed_addons) }}
+        addon: ${{ fromJSON(needs.check-addon-changes.outputs.changedAddons) }}
         arch: ["aarch64", "amd64", "armv7"]
-      fail-fast: false # Continue building other addons/arches even if one fails
 
     steps:
-      - name: ↩️ Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: ℹ️ Get add-on information for ${{ matrix.addon }}
+      - name: Get information
         id: info
-        uses: home-assistant/actions/helpers/info@master # Pinned to a specific version
+        uses: home-assistant/actions/helpers/info@master
         with:
           path: "./${{ matrix.addon }}"
 
-      - name: 🧐 Check if ${{ matrix.addon }} should be built for ${{ matrix.arch }}
-        id: check_arch
-        shell: bash
+      - name: Check if add-on should be built
+        id: check
         run: |
           if [[ "${{ steps.info.outputs.architectures }}" =~ ${{ matrix.arch }} ]]; then
              echo "build_arch=true" >> $GITHUB_OUTPUT
-             # Extract only the image name, not the full path, for the builder's --image flag
-             IMAGE_NAME=$(echo "${{ steps.info.outputs.image }}" | awk -F'/' '{print $NF}')
-             echo "image_name=$IMAGE_NAME" >> $GITHUB_OUTPUT
-             echo "Building ${{ matrix.addon }} for ${{ matrix.arch }}."
+             echo "image=$(echo ${{ steps.info.outputs.image }} | cut -d'/' -f3)" >> $GITHUB_OUTPUT
           else
+             echo "${{ matrix.arch }} is not a valid arch for ${{ matrix.addon }}, skipping build"
              echo "build_arch=false" >> $GITHUB_OUTPUT
-             echo "${{ matrix.arch }} is not a valid architecture for ${{ matrix.addon }}. Skipping build for this arch."
           fi
 
-      - name: 🔒 Login to GitHub Container Registry
-        if: steps.check_arch.outputs.build_arch == 'true'
-        uses: docker/login-action@v3
+      - name: Login to GitHub Container Registry
+        if: steps.check.outputs.build_arch == 'true'
+        uses: docker/login-action@v3.1.0
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 🛠️ Build ${{ matrix.addon }} for ${{ matrix.arch }}
-        if: steps.check_arch.outputs.build_arch == 'true'
-        uses: home-assistant/builder@2025.03.0 # Kept user-provided version
+      - name: Build ${{ matrix.addon }} add-on
+        if: steps.check.outputs.build_arch == 'true'
+        uses: home-assistant/builder@2025.03.0
         with:
           args: |
-            --${{ matrix.arch }}
-            --target "/data/${{ matrix.addon }}"
-            --image "${{ steps.check_arch.outputs.image_name }}"
-            --docker-hub "ghcr.io/${{ github.repository_owner }}"
+            --${{ matrix.arch }} \
+            --target /data/${{ matrix.addon }} \
+            --image "${{ steps.check.outputs.image }}" \
+            --docker-hub "ghcr.io/${{ github.repository_owner }}" \
             --addon
