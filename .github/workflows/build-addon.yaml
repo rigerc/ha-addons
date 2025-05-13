@@ -94,6 +94,14 @@ jobs:
              echo "image_slug=" >> $GITHUB_OUTPUT # Ensure it's empty
           fi
 
+      # Add a step to explicitly mark build as skipped when arch is not valid
+      - name: Skip build for unsupported architecture
+        id: skip_build
+        if: steps.check_arch.outputs.build_arch == 'false'
+        run: |
+          echo "::notice::Skipping build for ${{ matrix.addon }} on ${{ matrix.arch }} - architecture not supported"
+          echo "BUILD_SKIPPED=true" >> $GITHUB_ENV
+
       - name: Login to GitHub Container Registry
         if: steps.check_arch.outputs.build_arch == 'true' && github.event.inputs.debug_no_build != 'true'
         uses: docker/login-action@v3.1.0
@@ -148,6 +156,14 @@ jobs:
             fi
           fi
 
+      # Add a step to explicitly mark build as skipped when version already exists
+      - name: Skip build for existing version
+        id: skip_existing_version
+        if: steps.check_arch.outputs.build_arch == 'true' && steps.version_check.outputs.should_build == 'false'
+        run: |
+          echo "::notice::Skipping build for ${{ matrix.addon }} on ${{ matrix.arch }} - version already published"
+          echo "BUILD_SKIPPED=true" >> $GITHUB_ENV
+
       - name: Display debug information (if debug_no_build is true)
         if: github.event.inputs.debug_no_build == 'true' && steps.check_arch.outputs.build_arch == 'true'
         run: |
@@ -173,3 +189,18 @@ jobs:
             --version "${{ steps.info.outputs.version }}" \
             --docker-hub "ghcr.io/${{ github.repository_owner }}" \
             --addon
+
+      # Final step that will generate proper output depending on skip status
+      - name: Report build status
+        if: always()
+        shell: bash
+        run: |
+          if [[ "${BUILD_SKIPPED:-false}" == "true" ]]; then
+            echo "Build was skipped for ${{ matrix.addon }} on ${{ matrix.arch }}"
+            # Use GitHub Actions skip command to mark this job's status as skipped
+            echo "::warning::Build skipped for ${{ matrix.addon }} on ${{ matrix.arch }}"
+            # GitHub Actions treats exit code 0 as success, non-zero as failure
+            # We can't use exit code 78 (POSIX standard for "configuration error")
+            # as GitHub Actions doesn't handle it specially
+            exit 0  # This will show as success, but we've marked with notices/warnings
+          fi
