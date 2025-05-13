@@ -32,5 +32,6 @@
   "url": "https://github.com/rigerc/ha-addons/kapowarr",
   "version": "1.2.0-1",
   "webui": "http://[HOST]:[PORT:5656]/",
+  "image": "ghcr.io/rigerc/kapowarr-{arch}",
   "boot": "manual"
 }
