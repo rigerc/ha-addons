@@ -199,8 +199,18 @@ jobs:
             echo "Build was skipped for ${{ matrix.addon }} on ${{ matrix.arch }}"
             # Use GitHub Actions skip command to mark this job's status as skipped
             echo "::warning::Build skipped for ${{ matrix.addon }} on ${{ matrix.arch }}"
-            # GitHub Actions treats exit code 0 as success, non-zero as failure
-            # We can't use exit code 78 (POSIX standard for "configuration error")
-            # as GitHub Actions doesn't handle it specially
-            exit 0  # This will show as success, but we've marked with notices/warnings
+            exit 78
           fi
+
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send ntfy.sh notification
+        uses: binwiederhier/ntfy-notification-action@v1
+        with:
+          server: https://ntfy.sh
+          topic: ha_addons_builds_rigerc
+          priority: high
+          tags: github,ci
+          title: "GitHub CI Notification"
+          message: "Builds!"
