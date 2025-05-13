@@ -1,4 +1,3 @@
----
 name: Builder
 
 on:
@@ -10,52 +9,97 @@ on:
         type: string
   push:
     branches:
-      - main # Or your default branch, e.g., master
+      - main # Or your default branch
     paths:
       - '**/config.json'
+
 jobs:
-  check-addon-changes:
+  check-version-changes:
     runs-on: ubuntu-latest
     outputs:
-      changedAddons: ${{ steps.set-addons.outputs.addons }}
+      changedAddons: ${{ steps.check-changes.outputs.changed_addons }}
     steps:
-      - name: ↩️ Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
-      - name: Set add-ons to build
-        id: set-addons
+        with:
+          fetch-depth: 0  # Needed for comparing changes between commits
+
+      - name: Set manual add-on
+        id: manual-addon
+        if: github.event.inputs.addon != ''
         run: |
-          if [ -n "${{ github.event.inputs.addon }}" ]; then
-            # Use manually specified add-on
-            echo "addons=[\"${{ github.event.inputs.addon }}\"]" >> $GITHUB_OUTPUT
-          else
-            # Detect changed files
-            changed_dirs=$(find . -maxdepth 1 -type d -not -path "*/\.*" -not -path "." | sed 's|^\./||' | jq -R -s -c 'split("\n") | map(select(length > 0))')
-            echo "addons=$changed_dirs" >> $GITHUB_OUTPUT
+          echo "addon=${{ github.event.inputs.addon }}" >> $GITHUB_OUTPUT
+          echo "is_manual=true" >> $GITHUB_OUTPUT
+
+      - name: Check for version changes in config.json files
+        id: check-changes
+        uses: dorny/paths-filter@v2
+        with:
+          list-files: json
+          filters: |
+            changed:
+              - added|modified: '**/config.json'
+
+      - name: Check version changes
+        id: version-changes
+        if: steps.manual-addon.outputs.is_manual != 'true'
+        uses: tj-actions/changed-files@v41
+        with:
+          files: '**/config.json'
+
+      - name: Process version changes
+        id: process-changes
+        run: |
+          if [[ "${{ steps.manual-addon.outputs.is_manual }}" == "true" ]]; then
+            echo "changed_addons=[\"${{ steps.manual-addon.outputs.addon }}\"]" >> $GITHUB_OUTPUT
+            exit 0
           fi
 
+          changed_addons=()
+          
+          for file in ${{ steps.version-changes.outputs.all_changed_files }}; do
+            # Extract directory name (add-on name)
+            addon_dir=$(dirname "$file")
+            # Remove leading './' if present
+            addon_dir=${addon_dir#./}
+            
+            # Only check if it's a root level directory
+            if [[ $(echo "$addon_dir" | grep -o "/" | wc -l) -eq 0 ]]; then
+              # Check if version has changed in this config.json
+              if git diff HEAD^ HEAD -- "$file" | grep -q '+"version":' || git diff HEAD^ HEAD -- "$file" | grep -q '"version": "'; then
+                changed_addons+=("$addon_dir")
+              fi
+            fi
+          done
+          
+          # Convert to JSON array and set output
+          json_array=$(printf '"%s",' "${changed_addons[@]}" | sed 's/,$//')
+          echo "changed_addons=[$json_array]" >> $GITHUB_OUTPUT
+
   lint_config:
-    if: ${{ needs.check-addon-changes.outputs.changedAddons != '[]' }}
-    needs: check-addon-changes
+    if: ${{ needs.check-version-changes.outputs.changedAddons != '[]' && needs.check-version-changes.outputs.changedAddons != '' }}
+    needs: check-version-changes
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        addon: ${{ fromJSON(needs.check-addon-changes.outputs.changedAddons) }}
+        addon: ${{ fromJSON(needs.check-version-changes.outputs.changedAddons) }}
     steps:
-      - name: ↩️ Checkout
+      - name: Checkout
         uses: actions/checkout@v4
+
       - name: 🔎 Run Home Assistant Add-on Lint
         uses: frenck/action-addon-linter@v2.18
         with:
           path: "./${{ matrix.addon }}"
 
   build:
-    if: ${{ needs.check-addon-changes.outputs.changedAddons != '[]' }}
-    needs: [check-addon-changes, lint_config]
+    if: ${{ needs.check-version-changes.outputs.changedAddons != '[]' && needs.check-version-changes.outputs.changedAddons != '' }}
+    needs: [check-version-changes, lint_config]
     runs-on: ubuntu-latest
     name: Build ${{ matrix.arch }} ${{ matrix.addon }} add-on
     strategy:
       matrix:
-        addon: ${{ fromJSON(needs.check-addon-changes.outputs.changedAddons) }}
+        addon: ${{ fromJSON(needs.check-version-changes.outputs.changedAddons) }}
         arch: ["aarch64", "amd64", "armv7"]
 
     steps:
