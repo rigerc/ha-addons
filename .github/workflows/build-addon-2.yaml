@@ -32,6 +32,8 @@ jobs:
       - name: 🚀 Run add-on information action
         id: information
         uses: frenck/action-addon-information@v1.4.2
+        with:
+          path: "./${{ inputs.slug }}"
       - name: 🚀 Process possible slug override
         id: override
         run: |
@@ -98,6 +100,8 @@ jobs:
         uses: actions/checkout@v4
       - name: 🚀 Run YAMLLint
         uses: frenck/action-yamllint@v1.5
+        with:
+          path: "./${{ needs.information.outputs.target }}/"
 
   build:
     name: Build ${{ matrix.architecture }}
