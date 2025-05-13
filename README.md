@@ -39,6 +39,8 @@ Below is a list of addons available in this repository. Click on an addon name f
 ### [Romm](./romm)
 **aarch64 only for now!**
 
+### [Kapowarr](./kapowarr)
+
 ![Supports aarch64 Architecture][aarch64-shield]
 
 ## 🚀 Installation of Individual Add-ons
