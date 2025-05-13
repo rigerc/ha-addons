@@ -101,7 +101,7 @@ jobs:
       - name: 🚀 Run YAMLLint
         uses: frenck/action-yamllint@v1.5
         with:
-          path: "./${{ needs.information.outputs.target }}/"
+          path: "./${{ needs.information.outputs.target }}"
 
   build:
     name: Build ${{ matrix.architecture }}
