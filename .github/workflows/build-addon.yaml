@@ -32,7 +32,16 @@ jobs:
             # Use manually specified add-on
             echo "addons=[\"${{ github.event.inputs.addon }}\"]" >> $GITHUB_OUTPUT
           else
-            # Detect changed files
+            # Detect changed files (assuming top-level dirs are addons)
+            # If specific config.json changes are needed, this part needs more sophisticated git diff parsing.
+            # For now, keeping original logic: if any config.json changes, it lists all addons.
+            # To list only changed addons based on config.json paths for push:
+            # changed_dirs=$(git diff --name-only ${{ github.event.before }} ${{ github.event.after }} | grep 'config.json' | xargs -I {} dirname {} | sed 's|^\./||' | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            # if [ "$changed_dirs" == "[]" ] && [ -z "${{ github.event.inputs.addon }}" ]; then
+            #   echo "No specific addon input and no config.json changes detected that match addon directories."
+            #   # Fallback to original logic if needed, or make it an error/empty.
+            #   # For simplicity, let's stick to the original broad detection for now.
+            # fi
             changed_dirs=$(find . -maxdepth 1 -type d -not -path "*/\.*" -not -path "." | sed 's|^\./||' | jq -R -s -c 'split("\n") | map(select(length > 0))')
             echo "addons=$changed_dirs" >> $GITHUB_OUTPUT
           fi
@@ -48,7 +57,7 @@ jobs:
       - name: ↩️ Checkout
         uses: actions/checkout@v4
       - name: 🔎 Run Home Assistant Add-on Lint
-        uses: frenck/action-addon-linter@v2.18
+        uses: frenck/action-addon-linter@v2.18 # Consider updating to v3 if available
         with:
           path: "./${{ matrix.addon }}"
 
@@ -72,42 +81,95 @@ jobs:
         with:
           path: "./${{ matrix.addon }}"
 
-      - name: Check if add-on should be built
-        id: check
+      - name: Check if add-on architecture is valid
+        id: check_arch
         run: |
           if [[ "${{ steps.info.outputs.architectures }}" =~ ${{ matrix.arch }} ]]; then
              echo "build_arch=true" >> $GITHUB_OUTPUT
-             echo "image=$(echo ${{ steps.info.outputs.image }} | cut -d'/' -f3)" >> $GITHUB_OUTPUT
+             # This gets the base image name, e.g., "myaddon" from "ghcr.io/user/myaddon"
+             echo "image_slug=$(echo ${{ steps.info.outputs.image }} | awk -F'/' '{print $NF}')" >> $GITHUB_OUTPUT
           else
              echo "${{ matrix.arch }} is not a valid arch for ${{ matrix.addon }}, skipping build"
              echo "build_arch=false" >> $GITHUB_OUTPUT
+             echo "image_slug=" >> $GITHUB_OUTPUT # Ensure it's empty
           fi
 
       - name: Login to GitHub Container Registry
-        # Modified if condition:
-        # Only run if build_arch is true AND (it's not a workflow_dispatch OR debug_no_build is false)
-        # Simpler: Only run if build_arch is true AND debug_no_build is not true (works for push too as inputs.debug_no_build will be null)
-        if: steps.check.outputs.build_arch == 'true' && github.event.inputs.debug_no_build != true
+        if: steps.check_arch.outputs.build_arch == 'true' && github.event.inputs.debug_no_build != 'true'
         uses: docker/login-action@v3.1.0
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Display debug information (if debug_no_build is true)
-        if: github.event.inputs.debug_no_build == 'true' && steps.check.outputs.build_arch == 'true'
+      - name: Check published version vs local version
+        id: version_check
+        # This step runs if the arch is valid.
+        # It will try to determine if a build is needed.
+        # If debug_no_build is true, it will assume a build is needed for reporting purposes,
+        # as it won't perform the actual docker pull/inspect.
+        if: steps.check_arch.outputs.build_arch == 'true'
         run: |
-          echo "::notice title=Debug Mode Active::Build step for ${{ matrix.addon }} (${{ matrix.arch }}) would run with image ${{ steps.check.outputs.image }}."
-          echo "Skipping actual build due to 'debug_no_build' option."
+          LOCAL_VERSION="${{ steps.info.outputs.version }}"
+          IMAGE_SLUG="${{ steps.check_arch.outputs.image_slug }}" # e.g., myaddon (without arch)
+          IMAGE_FULL_NAME="ghcr.io/${{ github.repository_owner }}/${IMAGE_SLUG}"
 
-      - name: Build ${{ matrix.addon }} add-on
-        # Modified if condition:
-        if: steps.check.outputs.build_arch == 'true' && github.event.inputs.debug_no_build != 'true'
-        uses: home-assistant/builder@2025.03.0
+          echo "Local version for ${{ matrix.addon }} from config.json: $LOCAL_VERSION"
+          echo "Image to check: $IMAGE_FULL_NAME:latest"
+
+          # Default to assuming a build is needed, especially in debug mode or if checks fail
+          echo "should_build=true" >> $GITHUB_OUTPUT
+          echo "version_check_message=Build assumed necessary (e.g., debug mode, first build, or new version)." >> $GITHUB_OUTPUT
+
+          if [[ "${{ github.event.inputs.debug_no_build }}" == "true" ]]; then
+            echo "::notice::Debug mode ('debug_no_build' is true): Skipping remote version check for $IMAGE_FULL_NAME. Reporting as if build is needed."
+            echo "version_check_message=Debug mode: Remote version check skipped." >> $GITHUB_OUTPUT
+          else
+            echo "Attempting to pull $IMAGE_FULL_NAME:latest to check its version label..."
+            # Pulling :latest should get the manifest list and then the correct arch-specific image.
+            # The version label is on the arch-specific image.
+            # Silence stderr for pull as "not found" is a valid outcome for new images.
+            # `docker inspect` also silenced if label not found.
+            PUBLISHED_VERSION=$(docker pull "$IMAGE_FULL_NAME:latest" > /dev/null 2>&1 && \
+                                docker inspect "$IMAGE_FULL_NAME:latest" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' 2>/dev/null || \
+                                echo "")
+
+            if [ -z "$PUBLISHED_VERSION" ]; then
+              echo "No previously published version found for $IMAGE_FULL_NAME:latest (or version label 'org.opencontainers.image.version' missing). Build is needed."
+              echo "version_check_message=No published version found or label missing for $IMAGE_FULL_NAME:latest. Will build $LOCAL_VERSION." >> $GITHUB_OUTPUT
+              # should_build remains true (default)
+            elif [ "$LOCAL_VERSION" == "$PUBLISHED_VERSION" ]; then
+              echo "Version $LOCAL_VERSION for $IMAGE_FULL_NAME is already published. Skipping build for ${{ matrix.arch }}."
+              echo "should_build=false" >> $GITHUB_OUTPUT # Override default
+              echo "version_check_message=Published version $PUBLISHED_VERSION matches local $LOCAL_VERSION. No build needed." >> $GITHUB_OUTPUT
+            else
+              echo "New version $LOCAL_VERSION detected for $IMAGE_FULL_NAME (latest published: $PUBLISHED_VERSION). Build is needed for ${{ matrix.arch }}."
+              echo "version_check_message=New version $LOCAL_VERSION detected (published: $PUBLISHED_VERSION). Will build." >> $GITHUB_OUTPUT
+              # should_build remains true (default)
+            fi
+          fi
+
+      - name: Display debug information (if debug_no_build is true)
+        if: github.event.inputs.debug_no_build == 'true' && steps.check_arch.outputs.build_arch == 'true'
+        run: |
+          echo "::notice title=Debug Mode Active for ${{ matrix.addon }} (${{ matrix.arch }}) ::"
+          echo "Image: ghcr.io/${{ github.repository_owner }}/${{ steps.check_arch.outputs.image_slug }}"
+          echo "Local version from config.json: ${{ steps.info.outputs.version }}"
+          echo "Version Check: ${{ steps.version_check.outputs.version_check_message }}"
+          if [[ "${{ steps.version_check.outputs.should_build }}" == "true" ]]; then
+            echo "Build step *would* run with current settings (but is skipped due to 'debug_no_build')."
+          else
+            echo "Build step *would be skipped* anyway due to version match (even without 'debug_no_build')."
+          fi
+
+      - name: Build ${{ matrix.addon }} add-on for ${{ matrix.arch }}
+        if: steps.check_arch.outputs.build_arch == 'true' && github.event.inputs.debug_no_build != 'true' && steps.version_check.outputs.should_build == 'true'
+        uses: home-assistant/builder@2025.03.0 # Use a specific commit SHA or the latest release tag for stability
         with:
           args: |
             --${{ matrix.arch }} \
             --target /data/${{ matrix.addon }} \
-            --image "${{ steps.check.outputs.image }}" \
+            --image "${{ steps.check_arch.outputs.image_slug }}" \
+            --version "${{ steps.info.outputs.version }}" \
             --docker-hub "ghcr.io/${{ github.repository_owner }}" \
             --addon
