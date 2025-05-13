@@ -1,0 +1,143 @@
+name: Builder
+
+on:
+  workflow_dispatch:
+    inputs:
+      addon:
+        description: 'Add-on to build (leave empty to detect changes)'
+        required: false
+        type: string
+  push:
+    branches:
+      - main # Or your default branch
+    paths:
+      - '**/config.json'
+
+jobs:
+  check-version-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      changedAddons: ${{ steps.check-changes.outputs.changed_addons }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for comparing changes between commits
+
+      - name: Set manual add-on
+        id: manual-addon
+        if: github.event.inputs.addon != ''
+        run: |
+          echo "addon=${{ github.event.inputs.addon }}" >> $GITHUB_OUTPUT
+          echo "is_manual=true" >> $GITHUB_OUTPUT
+
+      - name: Check for version changes in config.json files
+        id: check-changes
+        uses: dorny/paths-filter@v2
+        with:
+          list-files: json
+          filters: |
+            changed:
+              - added|modified: '**/config.json'
+
+      - name: Check version changes
+        id: version-changes
+        if: steps.manual-addon.outputs.is_manual != 'true'
+        uses: tj-actions/changed-files@v41
+        with:
+          files: '**/config.json'
+
+      - name: Process version changes
+        id: process-changes
+        run: |
+          if [[ "${{ steps.manual-addon.outputs.is_manual }}" == "true" ]]; then
+            echo "changed_addons=[\"${{ steps.manual-addon.outputs.addon }}\"]" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          changed_addons=()
+          
+          for file in ${{ steps.version-changes.outputs.all_changed_files }}; do
+            # Extract directory name (add-on name)
+            addon_dir=$(dirname "$file")
+            # Remove leading './' if present
+            addon_dir=${addon_dir#./}
+            
+            # Only check if it's a root level directory
+            if [[ $(echo "$addon_dir" | grep -o "/" | wc -l) -eq 0 ]]; then
+              # Check if version has changed in this config.json
+              if git diff HEAD^ HEAD -- "$file" | grep -q '+"version":' || git diff HEAD^ HEAD -- "$file" | grep -q '"version": "'; then
+                changed_addons+=("$addon_dir")
+              fi
+            fi
+          done
+          
+          # Convert to JSON array and set output
+          json_array=$(printf '"%s",' "${changed_addons[@]}" | sed 's/,$//')
+          echo "changed_addons=[$json_array]" >> $GITHUB_OUTPUT
+
+  lint_config:
+    if: ${{ needs.check-version-changes.outputs.changedAddons != '[]' && needs.check-version-changes.outputs.changedAddons != '' }}
+    needs: check-version-changes
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        addon: ${{ fromJSON(needs.check-version-changes.outputs.changedAddons) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔎 Run Home Assistant Add-on Lint
+        uses: frenck/action-addon-linter@v2.18
+        with:
+          path: "./${{ matrix.addon }}"
+
+  build:
+    if: ${{ needs.check-version-changes.outputs.changedAddons != '[]' && needs.check-version-changes.outputs.changedAddons != '' }}
+    needs: [check-version-changes, lint_config]
+    runs-on: ubuntu-latest
+    name: Build ${{ matrix.arch }} ${{ matrix.addon }} add-on
+    strategy:
+      matrix:
+        addon: ${{ fromJSON(needs.check-version-changes.outputs.changedAddons) }}
+        arch: ["aarch64", "amd64", "armv7"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Get information
+        id: info
+        uses: home-assistant/actions/helpers/info@master
+        with:
+          path: "./${{ matrix.addon }}"
+
+      - name: Check if add-on should be built
+        id: check
+        run: |
+          if [[ "${{ steps.info.outputs.architectures }}" =~ ${{ matrix.arch }} ]]; then
+             echo "build_arch=true" >> $GITHUB_OUTPUT
+             echo "image=$(echo ${{ steps.info.outputs.image }} | cut -d'/' -f3)" >> $GITHUB_OUTPUT
+          else
+             echo "${{ matrix.arch }} is not a valid arch for ${{ matrix.addon }}, skipping build"
+             echo "build_arch=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Login to GitHub Container Registry
+        if: steps.check.outputs.build_arch == 'true'
+        uses: docker/login-action@v3.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build ${{ matrix.addon }} add-on
+        if: steps.check.outputs.build_arch == 'true'
+        uses: home-assistant/builder@2025.03.0
+        with:
+          args: |
+            --${{ matrix.arch }} \
+            --target /data/${{ matrix.addon }} \
+            --image "${{ steps.check.outputs.image }}" \
+            --docker-hub "ghcr.io/${{ github.repository_owner }}" \
+            --addon
