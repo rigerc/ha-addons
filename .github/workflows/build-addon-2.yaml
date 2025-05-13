@@ -59,6 +59,7 @@ jobs:
         uses: frenck/action-addon-linter@v2.18.0
         with:
           community: false
+          path: "./${{ needs.information.outputs.slug }}/"
 
   lint-hadolint:
     name: Hadolint
@@ -73,7 +74,7 @@ jobs:
       - name: 🚀 Run Hadolint
         uses: brpaz/hadolint-action@v1.5.0
         with:
-          dockerfile: "./Dockerfile"
+          dockerfile: "./${{ needs.information.outputs.slug }}/Dockerfile"
 
   lint-json:
     name: JSON Lint
