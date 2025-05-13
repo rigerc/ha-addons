@@ -105,7 +105,7 @@ jobs:
 
       - name: ℹ️ Get add-on information for ${{ matrix.addon }}
         id: info
-        uses: home-assistant/actions/helpers/info@v1.3.0 # Pinned to a specific version
+        uses: home-assistant/actions/helpers/info@main # Pinned to a specific version
         with:
           path: "./${{ matrix.addon }}"
 
