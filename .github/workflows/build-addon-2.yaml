@@ -29,11 +29,13 @@ jobs:
     steps:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@v4
+        with:
+            sparse-checkout: ${{ needs.information.outputs.slug }}
       - name: 🚀 Run add-on information action
         id: information
         uses: frenck/action-addon-information@v1.4.2
         with:
-          path: "./${{ inputs.slug }}"
+          path: "/${{ inputs.slug }}"
       - name: 🚀 Process possible slug override
         id: override
         run: |
@@ -51,11 +53,12 @@ jobs:
     steps:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@v4
+        with:
+            sparse-checkout: ${{ needs.information.outputs.slug }}
       - name: 🚀 Run Add-on Lint
         uses: frenck/action-addon-linter@v2.18.0
         with:
           community: false
-          path: "./${{ needs.information.outputs.target }}"
 
   lint-hadolint:
     name: Hadolint
@@ -65,10 +68,12 @@ jobs:
     steps:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@v4
+        with:
+            sparse-checkout: ${{ needs.information.outputs.slug }}
       - name: 🚀 Run Hadolint
         uses: brpaz/hadolint-action@v1.5.0
         with:
-          dockerfile: "./${{ needs.information.outputs.target }}/Dockerfile"
+          dockerfile: "/Dockerfile"
 
   lint-json:
     name: JSON Lint
@@ -76,6 +81,8 @@ jobs:
     steps:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@v4
+        with:
+            sparse-checkout: ${{ needs.information.outputs.slug }}
       - name: 🚀 Run JQ
         run: |
           shopt -s globstar
@@ -87,6 +94,8 @@ jobs:
     steps:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@v4
+        with:
+            sparse-checkout: ${{ needs.information.outputs.slug }}
       - name: 🚀 Run Shellcheck
         uses: ludeeus/action-shellcheck@2.0.0
         env:
@@ -106,6 +115,8 @@ jobs:
     steps:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@v4
+        with:
+          sparse-checkout: ${{ needs.information.outputs.slug }}
       - name: 🏗 Set up build cache
         id: cache
         uses: actions/cache@v4.2.3
@@ -150,7 +161,7 @@ jobs:
           file: ${{ needs.information.outputs.target }}/Dockerfile
           cache-from: |
             type=local,src=/tmp/.docker-cache
-            ghcr.io/${{ github.repository_owner }}/${{ needs.information.outputs.slug }}/${{ matrix.architecture }}
+            ghcr.io/${{ github.repository_owner }}/${{ needs.information.outputs.slug }}/${{ matrix.architecture }}:beta
           cache-to: type=local,mode=max,dest=/tmp/.docker-cache-new
           platforms: ${{ steps.flags.outputs.platform }}
           build-args: |
