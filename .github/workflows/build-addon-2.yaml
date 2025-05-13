@@ -110,7 +110,6 @@ jobs:
       - lint-addon
       - lint-hadolint
       - lint-json
-    runs-on: ${{ contains(fromJson('["amd64", "armv7", "aarch64"]'), matrix.architecture) && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     strategy:
       matrix:
         architecture: ${{ fromJson(needs.information.outputs.architectures) }}
