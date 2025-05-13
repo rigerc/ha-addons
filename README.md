@@ -24,7 +24,7 @@ You can add this repository to your Home Assistant instance by following these s
     * Select `Repositories`.
     * In the "Manage add-on repositories" dialog, paste the following URL and click `ADD`:
         ```
-        [https://github.com/rigerc/ha-addons/](https://github.com/rigerc/ha-addons/)
+        https://github.com/rigerc/ha-addons/
         ```
     * Close the dialog.
 

@@ -1,0 +1,151 @@
+name: Weekly Repository Insights Summary (ntfy.sh)
+
+on:
+  workflow_dispatch: # Allows manual triggering
+  schedule:
+    - cron: '0 0 * * 0' # Runs every Sunday at 00:00 UTC
+
+jobs:
+  gather-insights:
+    runs-on: ubuntu-latest
+    outputs:
+      summary: ${{ steps.create_summary.outputs.summary_text }}
+      repo_name: ${{ github.repository }}
+      start_date: ${{ env.SEVEN_DAYS_AGO_SIMPLE }}
+      end_date: ${{ env.TODAY_SIMPLE }}
+    steps:
+      - name: Checkout code (not strictly necessary but good practice)
+        uses: actions/checkout@v4
+
+      - name: Get dates for last week
+        id: dates
+        run: |
+          echo "SEVEN_DAYS_AGO=$(date -I -d '7 days ago')T00:00:00Z" >> $GITHUB_ENV
+          echo "TODAY=$(date -I)T23:59:59Z" >> $GITHUB_ENV
+          echo "SEVEN_DAYS_AGO_SIMPLE=$(date -I -d '7 days ago')" >> $GITHUB_ENV
+          echo "TODAY_SIMPLE=$(date -I)" >> $GITHUB_ENV
+
+      - name: Fetch Repository Traffic - Views
+        id: views
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }} # Using GH_TOKEN for consistency, though PAT is used
+        run: |
+          response=$(curl -s -H "Authorization: token $GH_TOKEN" \
+                           -H "Accept: application/vnd.github.v3+json" \
+                           "https://api.github.com/repos/${{ github.repository }}/traffic/views")
+          echo "VIEWS_COUNT=$(echo $response | jq '.count // 0')" >> $GITHUB_ENV
+          echo "VIEWS_UNIQUES=$(echo $response | jq '.uniques // 0')" >> $GITHUB_ENV
+          # Sum views from the last 7 days
+          LAST_7_DAYS_VIEWS=0
+          if echo "$response" | jq -e '.views' > /dev/null; then # Check if .views array exists
+            for i in $(seq 0 6); do
+              day_index=$((13 - i)) # Get data from the most recent 7 days in the 14-day data
+              daily_views=$(echo $response | jq ".views[$day_index].count // 0")
+              LAST_7_DAYS_VIEWS=$((LAST_7_DAYS_VIEWS + daily_views))
+            done
+          fi
+          echo "LAST_7_DAYS_VIEWS_COUNT=$LAST_7_DAYS_VIEWS" >> $GITHUB_ENV
+
+      - name: Fetch Repository Traffic - Clones
+        id: clones
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          response=$(curl -s -H "Authorization: token $GH_TOKEN" \
+                           -H "Accept: application/vnd.github.v3+json" \
+                           "https://api.github.com/repos/${{ github.repository }}/traffic/clones")
+          echo "CLONES_COUNT=$(echo $response | jq '.count // 0')" >> $GITHUB_ENV
+          echo "CLONES_UNIQUES=$(echo $response | jq '.uniques // 0')" >> $GITHUB_ENV
+          # Sum clones from the last 7 days
+          LAST_7_DAYS_CLONES=0
+          if echo "$response" | jq -e '.clones' > /dev/null; then # Check if .clones array exists
+            for i in $(seq 0 6); do
+              day_index=$((13 - i))
+              daily_clones=$(echo $response | jq ".clones[$day_index].count // 0")
+              LAST_7_DAYS_CLONES=$((LAST_7_DAYS_CLONES + daily_clones))
+            done
+          fi
+          echo "LAST_7_DAYS_CLONES_COUNT=$LAST_7_DAYS_CLONES" >> $GITHUB_ENV
+
+      - name: Fetch Commit Activity (Last 7 Days)
+        id: commits
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          response=$(curl -s -H "Authorization: token $GH_TOKEN" \
+                           -H "Accept: application/vnd.github.v3+json" \
+                           "https://api.github.com/repos/${{ github.repository }}/commits?since=${{ env.SEVEN_DAYS_AGO }}&until=${{ env.TODAY }}")
+          echo "COMMITS_LAST_WEEK=$(echo $response | jq 'length // 0')" >> $GITHUB_ENV
+
+      - name: Fetch New Issues (Last 7 Days)
+        id: issues
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          response=$(curl -s -G -H "Authorization: token $GH_TOKEN" \
+                           -H "Accept: application/vnd.github.v3+json" \
+                           "https://api.github.com/search/issues" \
+                           --data-urlencode "q=repo:${{ github.repository }} is:issue created:>=${{ env.SEVEN_DAYS_AGO_SIMPLE }}")
+          echo "NEW_ISSUES_LAST_WEEK=$(echo $response | jq '.total_count // 0')" >> $GITHUB_ENV
+
+      - name: Fetch New and Merged Pull Requests (Last 7 Days)
+        id: pulls
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          # New PRs
+          new_prs_response=$(curl -s -G -H "Authorization: token $GH_TOKEN" \
+                                  -H "Accept: application/vnd.github.v3+json" \
+                                  "https://api.github.com/search/issues" \
+                                  --data-urlencode "q=repo:${{ github.repository }} is:pr created:>=${{ env.SEVEN_DAYS_AGO_SIMPLE }}")
+          echo "NEW_PRS_LAST_WEEK=$(echo $new_prs_response | jq '.total_count // 0')" >> $GITHUB_ENV
+
+          # Merged PRs
+          merged_prs_response=$(curl -s -G -H "Authorization: token $GH_TOKEN" \
+                                     -H "Accept: application/vnd.github.v3+json" \
+                                     "https://api.github.com/search/issues" \
+                                     --data-urlencode "q=repo:${{ github.repository }} is:pr merged:>=${{ env.SEVEN_DAYS_AGO_SIMPLE }}")
+          echo "MERGED_PRS_LAST_WEEK=$(echo $merged_prs_response | jq '.total_count // 0')" >> $GITHUB_ENV
+
+      - name: Create Summary
+        id: create_summary
+        run: |
+          summary_content="### GitHub Insights: ${{ github.repository }}
+          *${{ env.SEVEN_DAYS_AGO_SIMPLE }} to ${{ env.TODAY_SIMPLE }}*
+
+          **Traffic (Last 14 Days):**
+          - Total Views: ${{ env.VIEWS_COUNT }}
+          - Unique Visitors: ${{ env.VIEWS_UNIQUES }}
+          - Total Clones: ${{ env.CLONES_COUNT }}
+          - Unique Cloners: ${{ env.CLONES_UNIQUES }}
+
+          **Traffic (Last 7 Days Estimate):**
+          - Total Views: ${{ env.LAST_7_DAYS_VIEWS_COUNT }}
+          - Total Clones: ${{ env.LAST_7_DAYS_CLONES_COUNT }}
+
+          **Activity (Last 7 Days):**
+          - Commits: ${{ env.COMMITS_LAST_WEEK }}
+          - New Issues: ${{ env.NEW_ISSUES_LAST_WEEK }}
+          - New PRs: ${{ env.NEW_PRS_LAST_WEEK }}
+          - Merged PRs: ${{ env.MERGED_PRS_LAST_WEEK }}
+
+          [View on GitHub](https://github.com/${{ github.repository }}/pulse)"
+          # Using a here document for cleaner multiline output
+          echo "summary_text<<EOF" >> $GITHUB_OUTPUT
+          echo "$summary_content" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+  send-ntfy-notification:
+    needs: gather-insights
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send ntfy.sh notification
+        run: |
+          # If your ntfy topic requires authentication, you might add:
+          # -H "Authorization: Bearer ${{ secrets.NTFY_ACCESS_TOKEN }}" \
+          curl -X POST \
+               -H "Title: Weekly GitHub Insights for ${{ needs.gather-insights.outputs.repo_name }}" \
+               -H "Tags:bar_chart,page_facing_up,github" \
+               -H "Markdown: true" \
+               -d "${{ needs.gather-insights.outputs.summary }}" \
+               "${{ secrets.NTFY_TOPIC_URL }}"
