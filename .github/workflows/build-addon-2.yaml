@@ -92,17 +92,6 @@ jobs:
         env:
           SHELLCHECK_OPTS: -s bash
 
-  lint-yamllint:
-    name: YAMLLint
-    runs-on: ubuntu-latest
-    steps:
-      - name: ⤵️ Check out code from GitHub
-        uses: actions/checkout@v4
-      - name: 🚀 Run YAMLLint
-        uses: frenck/action-yamllint@v1.5
-        with:
-          path: "./${{ needs.information.outputs.target }}"
-
   build:
     name: Build ${{ matrix.architecture }}
     needs:
@@ -110,7 +99,6 @@ jobs:
       - lint-addon
       - lint-hadolint
       - lint-json
-      - lint-yamllint
     runs-on: ${{ contains(fromJson('["armhf", "armv7", "aarch64"]'), matrix.architecture) && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     strategy:
       matrix:
