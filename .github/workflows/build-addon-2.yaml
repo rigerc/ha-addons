@@ -97,7 +97,7 @@ jobs:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@v4
         with:
-            sparse-checkout: ${{ needs.information.outputs.slug }}
+            sparse-checkout: ${{ needs.information.outputs.target }}
       - name: 🚀 Run Shellcheck
         uses: ludeeus/action-shellcheck@2.0.0
         env:
