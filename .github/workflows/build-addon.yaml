@@ -179,32 +179,32 @@ jobs:
           # Case 1: No changes detected or specified
           if [ "$DETERMINE_CHANGES_RESULT" == "success" ] && ([ "$CHANGED_ADDONS_LIST" == "[]" ] || [ "$CHANGED_ADDONS_LIST" == "" ]); then
             if [ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ] && [ -z "$INPUT_ADDON" ]; then
-                TITLE="ℹ️ Build Process: No add-on specified"
-                MESSAGE_BODY="Manual workflow was run without specifying an add-on."
+              TITLE="ℹ️ Build Process: No add-on specified"
+              MESSAGE_BODY="Manual workflow was run without specifying an add-on."
             else
-                TITLE="ℹ️ Build Process: No changes"
-                MESSAGE_BODY="No relevant add-on changes detected to process."
+              TITLE="ℹ️ Build Process: No changes"
+              MESSAGE_BODY="No relevant add-on changes detected to process."
             fi
             PRIORITY=2 # Low priority
-            TAGS+=",skipped"
+            TAGS="${TAGS},skipped"
           # Case 2: Linting failed
           elif [ "$LINT_ADDONS_RESULT" == "failure" ]; then
             TITLE="❌ Linting Failed"
             MESSAGE_BODY="Linting failed for one or more add-ons."
             PRIORITY=5 # High priority
-            TAGS+=",lint_error,failure"
+            TAGS="${TAGS},lint_error,failure"
           # Case 3: Building failed
           elif [ "$BUILD_ADDONS_RESULT" == "failure" ]; then
             TITLE="❌ Build Failed"
             MESSAGE_BODY="Build failed for one or more add-ons."
             PRIORITY=5 # High priority
-            TAGS+=",build_error,failure"
+            TAGS="${TAGS},build_error,failure"
           # Case 4: Workflow cancelled (includes build cancelled)
           elif [ "$LINT_ADDONS_RESULT" == "cancelled" ] || [ "$BUILD_ADDONS_RESULT" == "cancelled" ]; then
             TITLE="⚠️ Build Cancelled"
             MESSAGE_BODY="The add-on processing workflow was cancelled."
             PRIORITY=4 # Elevated priority
-            TAGS+=",cancelled"
+            TAGS="${TAGS},cancelled"
           # Case 5: Success
           elif [ "$DETERMINE_CHANGES_RESULT" == "success" ] && \
                ( [ "$LINT_ADDONS_RESULT" == "success" ] || [ "$LINT_ADDONS_RESULT" == "skipped" ] ) && \
@@ -212,13 +212,13 @@ jobs:
             TITLE="✅ Build Successful"
             MESSAGE_BODY="All targeted add-ons were processed successfully."
             PRIORITY=3
-            TAGS+=",success"
+            TAGS="${TAGS},success"
           # Case 6: Unexpected state / upstream job failure (e.g. determine_changes failed)
           else
             TITLE="❗ Build Process Incomplete"
             MESSAGE_BODY="The add-on processing workflow did not complete as expected. Check logs."
             PRIORITY=4
-            TAGS+=",error,unknown_status"
+            TAGS="${TAGS},error,unknown_status"
           fi
 
           # Construct the full message
