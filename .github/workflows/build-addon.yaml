@@ -112,7 +112,7 @@ jobs:
         run: |
           LOCAL_VERSION="${{ steps.info.outputs.version }}"
           IMAGE_SLUG="${{ steps.check_arch.outputs.image_slug }}" # e.g., myaddon (without arch)
-          IMAGE_FULL_NAME="ghcr.io/${{ github.repository_owner }}/${IMAGE_SLUG}"
+          IMAGE_FULL_NAME="ghcr.io/${{ github.repository_owner }}/${IMAGE_SLUG}-${ matrix.arch }"
 
           echo "Local version for ${{ matrix.addon }} from config.json: $LOCAL_VERSION"
           echo "Image to check: $IMAGE_FULL_NAME:latest"
