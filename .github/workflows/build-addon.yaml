@@ -95,14 +95,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Display debug information (if debug_no_build is true)
-        if: github.event.inputs.debug_no_build == true && steps.check.outputs.build_arch == 'true'
+        if: github.event.inputs.debug_no_build == 'true' && steps.check.outputs.build_arch == 'true'
         run: |
           echo "::notice title=Debug Mode Active::Build step for ${{ matrix.addon }} (${{ matrix.arch }}) would run with image ${{ steps.check.outputs.image }}."
           echo "Skipping actual build due to 'debug_no_build' option."
 
       - name: Build ${{ matrix.addon }} add-on
         # Modified if condition:
-        if: steps.check.outputs.build_arch == 'true' && github.event.inputs.debug_no_build != true
+        if: steps.check.outputs.build_arch == 'true' && github.event.inputs.debug_no_build != 'true'
         uses: home-assistant/builder@2025.03.0
         with:
           args: |
