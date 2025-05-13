@@ -1,0 +1,34 @@
+{
+  "arch": [
+    "aarch64"
+  ],
+  "description": "",
+  "init": false,
+  "hassio_api": true,
+  "map": [
+    "addon_config:rw",
+    "share:rw",
+    "media"
+  ],
+  "name": "Kapowarr",
+  "ports": {
+    "5656/tcp": 5656
+  },
+  "ports_description": {
+    "5656/tcp": "Web UI"
+  },
+  "options": {
+    "download_path": "",
+    "comics_path": ""
+  },
+  "schema": {
+    "download_path": "str",
+    "comics_path": "str"
+  },
+  "slug": "kapowarr",
+  "host_network": true,
+  "url": "https://github.com/rigerc/ha-addons/kapowarr",
+  "version": "1.2.0-1",
+  "webui": "http://[HOST]:[PORT:5656]/",
+  "boot": "manual"
+}

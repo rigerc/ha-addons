@@ -1,0 +1,34 @@
+#include <tunables/global>
+
+profile kapowarr flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  capability,
+  file,
+  signal,
+  mount,
+  umount,
+  remount,
+  network udp,
+  network tcp,
+  network dgram,
+  network stream,
+  network inet,
+  network inet6,
+  network netlink raw,
+  network unix dgram,
+
+  capability setgid,
+  capability setuid,
+  capability sys_admin,
+  capability dac_read_search,
+  # capability dac_override,
+  # capability sys_rawio,
+
+  # Data access
+  /data/** rw,
+  /config/** rw,
+  /share/** rw,
+  /media/** rw,
+  /ssl/** r,
+}

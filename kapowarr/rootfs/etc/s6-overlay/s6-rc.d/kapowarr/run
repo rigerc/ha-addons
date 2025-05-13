@@ -1,0 +1,140 @@
+#!/usr/bin/with-contenv bashio
+# shellcheck shell=bash
+set -e
+
+# Add a small delay to ensure any dependencies are ready
+sleep 1
+
+bashio::log.info "Validating configuration options..."
+
+# Check if download_path is configured
+if ! bashio::config.has_value 'download_path'; then
+    bashio::log.fatal "Configuration option 'download_path' is not set. Please configure it in the add-on settings."
+    exit 1
+fi
+
+# Check if comics_path is configured
+if ! bashio::config.has_value 'comics_path'; then
+    bashio::log.fatal "Configuration option 'comics_path' is not set. Please configure it in the add-on settings."
+    exit 1
+fi
+
+# Get configuration paths
+declare dl_folder
+declare comics_folder
+declare db_folder
+
+dl_folder=$(bashio::config 'download_path')
+comics_folder=$(bashio::config 'comics_path')
+db_folder=/config/db # This is a fixed path for the add-on's internal DB
+
+# Additional check: ensure paths are not empty strings (bashio::config might return "" if set to empty)
+if [ -z "$dl_folder" ]; then
+    bashio::log.fatal "'download_path' is configured but is an empty string. Please provide a valid path."
+    exit 1
+fi
+
+if [ -z "$comics_folder" ]; then
+    bashio::log.fatal "'comics_path' is configured but is an empty string. Please provide a valid path."
+    exit 1
+fi
+
+bashio::log.info "Download path: ${dl_folder}"
+bashio::log.info "Comics path: ${comics_folder}"
+bashio::log.info "Database path: ${db_folder}"
+
+mkdir -p "${db_folder}" # Ensure the db_folder exists before symlinking
+
+
+# Function to create a symlink with proper error handling
+create_symlink() {
+    local source=$1
+    local target=$2
+    
+    # Check if the source directory exists
+    if [ ! -d "$source" ]; then
+        bashio::log.error "Source directory '$source' does not exist!"
+        return 1
+    fi
+    
+    # Check if the target symlink already exists
+    if [ -e "$target" ]; then
+        # If it's already a symlink pointing to the correct location, do nothing
+        if [ -L "$target" ] && [ "$(readlink -f "$target")" == "$(readlink -f "$source")" ]; then
+            bashio::log.info "Symlink '$target' already exists and points to the correct location."
+            return 0
+        fi
+    fi
+    
+    # Create parent directory if it doesn't exist
+    local parent_dir=$(dirname "$target")
+    if [ ! -d "$parent_dir" ]; then
+        bashio::log.info "Creating parent directory: $parent_dir"
+        mkdir -p "$parent_dir"
+        if [ $? -ne 0 ]; then
+            bashio::log.error "Failed to create parent directory '$parent_dir'!"
+            return 1
+        fi
+    fi
+    
+    # Create the symlink
+    bashio::log.info "Creating symlink: $target -> $source"
+    ln -s "$source" "$target"
+    
+    # Verify the symlink was created successfully
+    if [ $? -ne 0 ]; then
+        bashio::log.error "Failed to create symlink '$target' -> '$source'!"
+        return 1
+    fi
+    
+    # Verify the symlink points to the correct location
+    local actual_source=$(readlink -f "$target")
+    local expected_source=$(readlink -f "$source")
+    if [ "$actual_source" != "$expected_source" ]; then
+        bashio::log.error "Symlink verification failed! '$target' points to '$actual_source' instead of '$expected_source'!"
+        return 1
+    fi
+    
+    bashio::log.info "SUCCESS: Symlink '$target' -> '$source' created and verified."
+    return 0
+}
+
+# Main script execution
+bashio::log.info "Starting symlink creation process..."
+
+# Define the symlinks to create
+# Format: symlinks[source_path]=target_path
+# This will create: target_path -> source_path
+declare -A symlinks
+symlinks["${dl_folder}"]="/app/temp_downloads"
+symlinks["${comics_folder}"]="/comics-1"
+symlinks["${db_folder}"]="/app/db"
+
+# Track overall success
+success=true
+
+# Create each symlink
+for source in "${!symlinks[@]}"; do
+    target="${symlinks[$source]}"
+    
+    bashio::log.info "Processing symlink: $target -> $source"
+    if ! create_symlink "$source" "$target"; then
+        success=false
+    fi
+done
+
+# Final status report
+if [ "$success" = true ]; then
+    bashio::log.info "All symlinks were processed successfully!"
+else
+    bashio::log.error "One or more symlinks could not be created or verified. Please check the logs above. The application might not function correctly."
+    # Decide if you want to exit here. For some symlinks, failure might be critical.
+    # For example, if the DB symlink fails, the app is unlikely to work.
+    if ! [ -L "/app/db" ] || ! [ -L "/app/temp_downloads" ] || ! [ -L "/comics-1" ]; then
+        bashio::log.fatal "Critical symlinks missing. Aborting."
+        exit 1
+    fi
+fi
+
+bashio::log.info "Starting Kapowarr.py..."
+exec python3 /app/Kapowarr.py
