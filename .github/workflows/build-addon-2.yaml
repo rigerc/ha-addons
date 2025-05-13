@@ -3,7 +3,7 @@ name: Builder 2
 
 # yamllint disable-line rule:truthy
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       slug:
         description: Overrides the detected slug
