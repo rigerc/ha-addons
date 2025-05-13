@@ -167,6 +167,7 @@ jobs:
         uses: home-assistant/builder@2025.03.0 # Use a specific commit SHA or the latest release tag for stability
         with:
           args: |
+            --test \
             --${{ matrix.arch }} \
             --target /data/${{ matrix.addon }} \
             --image "${{ steps.check_arch.outputs.image_slug }}" \
