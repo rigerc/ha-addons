@@ -118,10 +118,10 @@ jobs:
       - information
       - lint-addon
       - lint-hadolint
-      - lint-json
-      - lint-prettier
-      - lint-shellcheck
-      - lint-yamllint
+      #- lint-json
+      #- lint-prettier
+      #- lint-shellcheck
+      #- lint-yamllint
     runs-on: ${{ contains(fromJson('["armhf", "armv7", "aarch64"]'), matrix.architecture) && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     strategy:
       matrix:
