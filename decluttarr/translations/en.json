@@ -1,0 +1,132 @@
+{
+  "configuration": {
+    "LOG_LEVEL": {
+      "name": "Log Level",
+      "description": "Set the verbosity of the addon's logging output."
+    },
+    "TEST_RUN": {
+      "name": "Test Run",
+      "description": "Enable test mode. If true, the addon will simulate operations without making actual changes."
+    },
+    "SSL_VERIFICATION": {
+      "name": "SSL Verification",
+      "description": "Enable or disable SSL certificate verification for outgoing HTTPS requests."
+    },
+    "REMOVE_TIMER": {
+      "name": "Removal Check Interval (minutes)",
+      "description": "Interval in minutes for how often to check for items to remove based on active features. Minimum 0."
+    },
+    "REMOVE_FAILED": {
+      "name": "Enable Removal of Failed Downloads",
+      "description": "If true, automatically remove downloads that have permanently failed in the download client."
+    },
+    "REMOVE_FAILED_IMPORTS": {
+      "name": "Enable Removal of Failed Imports",
+      "description": "If true, automatically remove items that failed to import into media managers (e.g., Sonarr, Radarr)."
+    },
+    "REMOVE_METADATA_MISSING": {
+      "name": "Enable Removal of Items with Missing Metadata",
+      "description": "If true, remove items from media managers if their metadata is missing."
+    },
+    "REMOVE_MISSING_FILES": {
+      "name": "Enable Removal of Items with Missing Files",
+      "description": "If true, remove items from media managers if their associated media files are missing from disk."
+    },
+    "REMOVE_ORPHANS": {
+      "name": "Enable Removal of Orphaned Items",
+      "description": "If true, remove items from download clients that are no longer tracked by any media manager."
+    },
+    "REMOVE_SLOW": {
+      "name": "Enable Removal of Slow Downloads",
+      "description": "If true, remove downloads that are progressing below the 'Minimum Download Speed'."
+    },
+    "REMOVE_STALLED": {
+      "name": "Enable Removal of Stalled Downloads",
+      "description": "If true, remove downloads that have stalled (no progress for a significant time)."
+    },
+    "REMOVE_UNMONITORED": {
+      "name": "Enable Removal of Unmonitored Items",
+      "description": "If true, remove unmonitored items from media managers and optionally from download clients."
+    },
+    "RUN_PERIODIC_RESCANS": {
+      "name": "Periodic Rescan Configuration",
+      "description": "Configure periodic library rescans for media managers. Enter as a JSON string, e.g., '{\"radarr\": 24, \"sonarr_series\": 12}' to rescan Radarr every 24h and Sonarr series every 12h."
+    },
+    "MIN_DOWNLOAD_SPEED": {
+      "name": "Minimum Download Speed (KB/s)",
+      "description": "Downloads slower than this speed (in Kilobytes per second) may be considered for removal if 'Enable Removal of Slow Downloads' is active. 0 to disable slow check."
+    },
+    "PERMITTED_ATTEMPTS": {
+      "name": "Permitted Action Attempts",
+      "description": "Maximum number of attempts for certain retryable actions before considering them failed. Minimum 1."
+    },
+    "NO_STALLED_REMOVAL_QBIT_TAG": {
+      "name": "qBittorrent Tag to Prevent Stalled Removal",
+      "description": "Torrents in qBittorrent with this tag will not be removed by the 'Stalled Downloads' feature."
+    },
+    "IGNORE_PRIVATE_TRACKERS": {
+      "name": "Ignore Private Trackers for Slow/Stalled Checks",
+      "description": "If true, downloads from private trackers will not be considered for removal by 'Slow' or 'Stalled' features."
+    },
+    "FAILED_IMPORT_MESSAGE_PATTERNS": {
+      "name": "Failed Import Message Patterns",
+      "description": "A list of regex patterns to identify specific import failure messages. Enter as a JSON array of strings, e.g., '[\"pattern1\", \"another.*pattern\"]'."
+    },
+    "IGNORED_DOWNLOAD_CLIENTS": {
+      "name": "Ignored Download Clients",
+      "description": "A list of download client IDs or names to be ignored by certain features. Enter as a JSON array of strings, e.g., '[\"client_id_1\", \"OldClient\"]'."
+    },
+    "RADARR_URL": {
+      "name": "Radarr URL",
+      "description": "Full URL to your Radarr instance (e.g., http://localhost:7878)."
+    },
+    "RADARR_KEY": {
+      "name": "Radarr API Key",
+      "description": "Your Radarr API Key. Required if Radarr URL is set."
+    },
+    "SONARR_URL": {
+      "name": "Sonarr URL",
+      "description": "Full URL to your Sonarr instance (e.g., http://localhost:8989)."
+    },
+    "SONARR_KEY": {
+      "name": "Sonarr API Key",
+      "description": "Your Sonarr API Key. Required if Sonarr URL is set."
+    },
+    "LIDARR_URL": {
+      "name": "Lidarr URL",
+      "description": "Full URL to your Lidarr instance (e.g., http://localhost:8686)."
+    },
+    "LIDARR_KEY": {
+      "name": "Lidarr API Key",
+      "description": "Your Lidarr API Key. Required if Lidarr URL is set."
+    },
+    "READARR_URL": {
+      "name": "Readarr URL",
+      "description": "Full URL to your Readarr instance (e.g., http://localhost:8787)."
+    },
+    "READARR_KEY": {
+      "name": "Readarr API Key",
+      "description": "Your Readarr API Key. Required if Readarr URL is set."
+    },
+    "WHISPARR_URL": {
+      "name": "Whisparr URL",
+      "description": "Full URL to your Whisparr instance (e.g., http://localhost:6969)."
+    },
+    "WHISPARR_KEY": {
+      "name": "Whisparr API Key",
+      "description": "Your Whisparr API Key. Required if Whisparr URL is set."
+    },
+    "QBITTORRENT_URL": {
+      "name": "qBittorrent URL",
+      "description": "Full URL to your qBittorrent Web UI (e.g., http://localhost:8080)."
+    },
+    "QBITTORRENT_USERNAME": {
+      "name": "qBittorrent Username",
+      "description": "Username for qBittorrent Web UI."
+    },
+    "QBITTORRENT_PASSWORD": {
+      "name": "qBittorrent Password",
+      "description": "Password for qBittorrent Web UI."
+    }
+  }
+}

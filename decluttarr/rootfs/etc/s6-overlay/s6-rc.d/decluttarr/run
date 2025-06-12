@@ -1,0 +1,98 @@
+#!/usr/bin/with-contenv bashio
+# shellcheck shell=bash
+set -e
+sleep 1
+bashio::log.info "Setting up environment variables from add-on configuration..."
+
+CONFIG_FILE="/app/config/config.conf"
+mkdir -p "$(dirname "$CONFIG_FILE")"
+echo -n > "$CONFIG_FILE"
+
+# Section mapping: key prefix (or key name) → INI section
+declare -A SECTION_MAP=(
+    ["LOG_LEVEL"]="general"
+    ["TEST_RUN"]="general"
+    ["REMOVE_"]="features"
+    ["RUN_PERIODIC_RESCANS"]="features"
+    ["MIN_DOWNLOAD_SPEED"]="feature_settings"
+    ["PERMITTED_ATTEMPTS"]="feature_settings"
+    ["NO_STALLED_REMOVAL_QBIT_TAG"]="feature_settings"
+    ["IGNORE_PRIVATE_TRACKERS"]="feature_settings"
+    ["FAILED_IMPORT_MESSAGE_PATTERNS"]="feature_settings"
+    ["IGNORED_DOWNLOAD_CLIENTS"]="feature_settings"
+    ["RADARR_"]="radarr"
+    ["SONARR_"]="sonarr"
+    ["LIDARR_"]="lidarr"
+    ["READARR_"]="readarr"
+    ["WHISPARR_"]="whisparr"
+    ["QBITTORRENT_"]="qbittorrent"
+)
+
+declare -A CONFIG_SECTIONS
+
+convert_to_env_var() {
+    echo "$1" | tr '[:lower:]' '[:upper:]' | sed 's/[-.]/_/g'
+}
+
+export_env_var() {
+    local name="$1"
+    local value="$2"
+    [[ "$name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || return 1
+    export "$name"="$value"
+    bashio::log.debug "Set env var: $name=$value"
+}
+
+get_section() {
+    local var="$1"
+    for prefix in "${!SECTION_MAP[@]}"; do
+        if [[ "$var" == "$prefix"* ]]; then
+            echo "${SECTION_MAP[$prefix]}"
+            return
+        fi
+    done
+    echo "general"
+}
+
+write_conf_line() {
+    local section="$1"
+    local key="$2"
+    local value="$3"
+    CONFIG_SECTIONS["$section"]+="$key = $value"$'\n'
+}
+
+if [ ! -f /data/options.json ]; then
+    bashio::log.warning "Missing /data/options.json"
+else
+    config_json=$(cat /data/options.json)
+    option_keys=$(echo "$config_json" | jq -r 'keys[]')
+
+    while IFS= read -r option_key; do
+        raw_value=$(echo "$config_json" | jq -c --arg key "$option_key" '.[$key]')
+        env_var=$(convert_to_env_var "$option_key")
+
+        # Detect type
+        if echo "$raw_value" | jq -e 'type == "array"' > /dev/null; then
+            value=$(echo "$raw_value" | jq -c '.')
+        elif echo "$raw_value" | jq -e 'type == "object"' > /dev/null; then
+            value=$(echo "$raw_value" | jq -c '.')
+        else
+            value=$(echo "$raw_value" | jq -r '.')
+        fi
+
+        export_env_var "$env_var" "$value"
+        section=$(get_section "$env_var")
+        write_conf_line "$section" "$env_var" "$value"
+    done <<< "$option_keys"
+
+    # Write sections to file
+    for section in "${!CONFIG_SECTIONS[@]}"; do
+        echo "[$section]" >> "$CONFIG_FILE"
+        printf "%s" "${CONFIG_SECTIONS[$section]}" >> "$CONFIG_FILE"
+        echo >> "$CONFIG_FILE"
+    done
+fi
+
+bashio::log.info "Environment variables and config file setup complete"
+bashio::log.info "Starting Decluttarr"
+
+exec python3 /app/main.py
